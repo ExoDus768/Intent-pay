@@ -17,6 +17,9 @@ const tokenChain = t => String(t.blockchain || '').toLowerCase();
 const isNearToken = t => tokenChain(t) === 'near';
 const tokenId = t => t.assetId || '';
 const tokenName = t => `${t.symbol || 'TOKEN'} · ${t.blockchain || 'Unknown chain'}`;
+const chainLabel = value => ({eth:'Ethereum',arb:'Arbitrum',op:'Optimism',avax:'Avalanche',bera:'Berachain'}[value] || String(value || '').replace(/(^|[-_ ])\\w/g, x => x.toUpperCase()));
+const TOKEN_PRIORITY = ['USDC','USDT','ETH','NEAR','DAI','WETH','WBTC','USDBC','USDE','FRAX','USDS'];
+const tokenPriority = t => { const i = TOKEN_PRIORITY.indexOf(String(t.symbol || '').toUpperCase()); return i < 0 ? TOKEN_PRIORITY.length : i; };
 const short = (value = '') => value.length > 24 ? value.slice(0, 10) + '…' + value.slice(-8) : value;
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -29,6 +32,7 @@ export default function App() {
   const [nearWallet, setNearWallet] = useState('');
   const [nearSelector, setNearSelector] = useState(null);
   const [nearModal, setNearModal] = useState(null);
+  const [originChain, setOriginChain] = useState('');
   const [originAsset, setOriginAsset] = useState('');
   const [destinationAsset, setDestinationAsset] = useState('');
   const [amount, setAmount] = useState('');
@@ -80,6 +84,8 @@ export default function App() {
   const origin = useMemo(() => tokens.find(t => tokenId(t) === originAsset), [tokens, originAsset]);
   const destination = useMemo(() => tokens.find(t => tokenId(t) === destinationAsset), [tokens, destinationAsset]);
   const origins = useMemo(() => tokens.filter(t => CHAIN_IDS[tokenChain(t)] || (isNearToken(t) && (t.contractAddress || t.assetId === 'nep141:wrap.near'))), [tokens]);
+  const originChains = useMemo(() => [...new Set(origins.map(tokenChain))].sort((a, b) => chainLabel(a).localeCompare(chainLabel(b))), [origins]);
+  const originTokens = useMemo(() => origins.filter(t => tokenChain(t) === originChain).sort((a, b) => tokenPriority(a) - tokenPriority(b) || String(a.symbol || '').localeCompare(String(b.symbol || ''))), [origins, originChain]);
   const destinations = useMemo(() => tokens, [tokens]);
 
   async function connectNearWallet() {
@@ -273,9 +279,15 @@ export default function App() {
       <div className="checkout-head"><div><div className="eyebrow">MAINNET MERCHANT CHECKOUT</div><h2>Configure payment</h2></div><span className="mainnet-pill">MAINNET</span></div>
       <form onSubmit={createQuote}>
         <label>Customer pays with</label>
-        <select value={originAsset} onChange={e => setOriginAsset(e.target.value)} required>
-          <option value="">Choose payment token and network</option>
-          {origins.map(t => <option key={t.assetId} value={t.assetId}>{tokenName(t)}</option>)}
+        <label>Choose network</label>
+        <select value={originChain} onChange={e => { setOriginChain(e.target.value); setOriginAsset(''); }} required>
+          <option value="">Select payment network</option>
+          {originChains.map(chain => <option key={chain} value={chain}>{chainLabel(chain)}</option>)}
+        </select>
+        <label>Choose token</label>
+        <select value={originAsset} onChange={e => setOriginAsset(e.target.value)} required disabled={!originChain || loadingTokens}>
+          <option value="">{!originChain ? 'Choose a network first' : 'Select available token'}</option>
+          {originTokens.map(t => <option key={t.assetId} value={t.assetId}>{t.symbol || 'TOKEN'}{t.name ? ' · ' + t.name : ''}</option>)}
         </select>
         <label>Amount</label><input type="number" min="0" step="any" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" required />
         <div className="section-rule"><span>MERCHANT RECEIVES</span></div>
