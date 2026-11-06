@@ -144,7 +144,7 @@ app.post('/api/deposit/submit', async (req, res) => {
   }
   try {
     const payload = { txHash, depositAddress };
-    if (depositMemo) payload.depositMemo = String(depositMemo);
+    if (depositMemo) payload.memo = String(depositMemo);
     const data = await oneClick('/deposit/submit', { method: 'POST', body: JSON.stringify(payload) });
     res.json(data);
   } catch (error) { res.status(error.status || 502).json({ error: error.message }); }
@@ -163,4 +163,6 @@ app.get('/api/status', async (req, res) => {
   } catch (error) { res.status(error.status || 502).json({ error: error.message }); }
 });
 
-app.listen(PORT, () => console.log(`IntentPay API listening on :${PORT}`));
+if (!process.env.VERCEL) app.listen(PORT, () => console.log(`IntentPay API listening on :${PORT}`));
+
+export default app;
