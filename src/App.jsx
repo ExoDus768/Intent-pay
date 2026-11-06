@@ -66,7 +66,7 @@ export default function App() {
 
   const origin = useMemo(() => tokens.find(t => tokenId(t) === originAsset), [tokens, originAsset]);
   const destination = useMemo(() => tokens.find(t => tokenId(t) === destinationAsset), [tokens, destinationAsset]);
-  const origins = useMemo(() => tokens.filter(t => CHAIN_IDS[tokenChain(t)] || isNearToken(t)), [tokens]);
+  const origins = useMemo(() => tokens.filter(t => CHAIN_IDS[tokenChain(t)] || (isNearToken(t) && (t.contractAddress || t.assetId === 'nep141:wrap.near'))), [tokens]);
   const destinations = useMemo(() => tokens, [tokens]);
 
   async function connectNearWallet() {
@@ -134,7 +134,7 @@ export default function App() {
   }
 
   async function sendDeposit() {
-    if (!window.ethereum || !quote?.quote?.depositAddress || !origin) return;
+    if (!quote?.quote?.depositAddress || !origin) return;
     if (Date.parse(quote.quote.deadline) <= Date.now()) {
       setQuote(null); return setNotice('This quote has expired. Request a new quote before sending funds.');
     }
@@ -185,6 +185,7 @@ export default function App() {
       finally { setBusy(false); }
       return;
     }
+    if (!window.ethereum) return setNotice('Open MetaMask or another injected EVM wallet in this browser.');
     const expectedChain = CHAIN_IDS[chainKey];
     if (!expectedChain) return setNotice(`Wallet deposits from ${origin.blockchain} are not enabled in this EVM checkout yet.`);
 
