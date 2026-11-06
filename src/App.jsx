@@ -45,6 +45,22 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('Connect your EVM or NEAR mainnet wallet, choose the asset you will pay with, and set the merchant payout details.');
   const quoteRequestRef = useRef(0);
+  const evmProvidersRef = useRef([]);
+  const activeEvmProviderRef = useRef(null);
+
+  useEffect(() => {
+    const announce = event => {
+      const detail = event?.detail;
+      if (!detail?.provider || !detail?.info) return;
+      const key = detail.info.uuid || detail.info.rdns || detail.info.name;
+      if (!evmProvidersRef.current.some(item => (item.info.uuid || item.info.rdns || item.info.name) === key)) {
+        evmProvidersRef.current.push(detail);
+      }
+    };
+    window.addEventListener('eip6963:announceProvider', announce);
+    window.dispatchEvent(new Event('eip6963:requestProvider'));
+    return () => window.removeEventListener('eip6963:announceProvider', announce);
+  }, []);
 
   useEffect(() => {
     try {
@@ -112,22 +128,28 @@ export default function App() {
   async function connectWallet() {
     setWalletAction('evm');
     try {
-      const ethereum = window.ethereum;
-      if (!ethereum) {
+      // Ask injected wallets to announce through EIP-6963 (Zerion supports this standard).
+      window.dispatchEvent(new Event('eip6963:requestProvider'));
+      await new Promise(resolve => setTimeout(resolve, 250));
+      const announced = evmProvidersRef.current;
+      const zerion = announced.find(item => /zerion/i.test((item.info?.name || '') + ' ' + (item.info?.rdns || '')));
+      const selected = zerion?.provider || announced[0]?.provider || window.ethereum;
+      if (!selected) {
         const mobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-        setNotice(mobile ? 'No EVM wallet was detected. Open IntentPay inside MetaMask or another wallet app browser, then tap Connect EVM.' : 'No EVM wallet extension was detected. Install or unlock MetaMask (or another EVM wallet), refresh IntentPay, and try again.');
-        return;
+        throw new Error(mobile ? 'No injected EVM provider was detected. Open this page in Zerion’s in-app browser and allow the wallet connection request.' : 'No injected EVM wallet was detected.');
       }
-      const provider = new BrowserProvider(ethereum);
+      activeEvmProviderRef.current = selected;
+      const provider = new BrowserProvider(selected);
       const accounts = await provider.send('eth_requestAccounts', []);
-      if (!accounts?.length) throw new Error('The wallet did not return an account. Unlock it and try again.');
+      if (!accounts?.length) throw new Error('The wallet did not return an account. Approve the connection request in Zerion.');
       const signer = await provider.getSigner();
       setWallet(await signer.getAddress());
-      setNotice('EVM wallet connected. Your connected address will be used as the refund address.');
-      ethereum.on?.('accountsChanged', next => setWallet(next?.[0] || ''));
-      ethereum.on?.('chainChanged', () => setQuote(null));
+      const walletName = zerion?.provider === selected ? 'Zerion' : (announced.find(item => item.provider === selected)?.info?.name || 'EVM');
+      setNotice(walletName + ' wallet connected. Your connected address will be used as the refund address.');
+      selected.on?.('accountsChanged', next => setWallet(next?.[0] || ''));
+      selected.on?.('chainChanged', () => setQuote(null));
     } catch (error) {
-      setNotice(error?.code === 4001 ? 'Wallet connection was rejected. Tap Connect EVM and approve the connection in your wallet.' : 'EVM wallet connection failed: ' + (error?.message || 'Unknown wallet error'));
+      setNotice(error?.code === 4001 ? 'Connection was rejected in your wallet. Tap Connect EVM and approve the request.' : 'EVM wallet connection failed: ' + (error?.message || 'Unknown wallet error'));
     } finally { setWalletAction(''); }
   }
 
@@ -247,13 +269,14 @@ export default function App() {
       finally { setBusy(false); }
       return;
     }
-    if (!window.ethereum) return setNotice('Open MetaMask or another injected EVM wallet in this browser.');
+    const injectedProvider = activeEvmProviderRef.current || window.ethereum;
+    if (!injectedProvider) return setNotice('Connect an EVM wallet before paying.');
     const expectedChain = CHAIN_IDS[chainKey];
     if (!expectedChain) return setNotice(`Wallet deposits from ${origin.blockchain} are not enabled in this EVM checkout yet.`);
 
     setBusy(true);
     try {
-      let provider = new BrowserProvider(window.ethereum);
+      let provider = new BrowserProvider(injectedProvider);
       let network = await provider.getNetwork();
       if (Number(network.chainId) !== expectedChain) {
         await provider.send('wallet_switchEthereumChain', [{ chainId: '0x' + expectedChain.toString(16) }]);
