@@ -266,7 +266,7 @@ export default function App() {
       const injected = window.ethereum;
       const injectedProviders = Array.isArray(injected?.providers) ? injected.providers : [];
       const zerion = announced.find(item => /zerion/i.test((item.info?.name || '') + ' ' + (item.info?.rdns || '')));
-      const zerionInjected = injectedProviders.find(provider => /zerion/i.test(provider?.providerInfo?.name || provider?.name || provider?.isZerion ? 'zerion' : ''));
+      const zerionInjected = injectedProviders.find(provider => /zerion/i.test(String(provider?.providerInfo?.name || provider?.name || '') + (provider?.isZerion ? ' zerion' : '')));
       const selected = zerion?.provider || zerionInjected || announced[0]?.provider || injectedProviders[0] || injected;
       if (!selected) {
         const mobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
