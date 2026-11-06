@@ -28,3 +28,5 @@
 @media(max-width:600px){.nav-right{gap:7px;flex-wrap:wrap;justify-content:flex-end}.merchant-tools-btn{padding:8px 9px;font-size:10px}.invoice-created{grid-template-columns:1fr}.invoice-created img{max-width:160px;margin:auto}.merchant-modal{padding:17px}.merchant-overlay{padding:8px}.merchant-modal{max-height:96vh}}
 
 .dashboard-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.dashboard-metrics div{display:grid;gap:5px;padding:11px;background:#0b1222;border:1px solid #293754;border-radius:9px}.dashboard-metrics span{font-size:10px;color:#91a0bc}.dashboard-metrics strong{font:600 19px 'Space Grotesk';color:#edf2ff}.notification-enable{margin:0;padding:9px;font-size:11px}
+
+.wallet-menu-feedback{margin:6px 5px 4px;padding:10px;border-top:1px solid #293754;color:#c9f6a5;font-size:11px;line-height:1.5;overflow-wrap:anywhere}
