@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-import { randomBytes, createHmac, timingSafeEqual } from 'node:crypto';
+import { randomBytes, createHmac } from 'node:crypto';
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 
@@ -211,7 +211,12 @@ app.post('/api/invoices', async (req, res) => {
     const decimals = Number(destination.decimals);
     const fraction = amount.split('.')[1] || '';
     if (fraction.length > decimals) return res.status(400).json({ error: `This token supports at most ${decimals} decimal places.` });
-    const isNearDestination = String(destination.blockchain || '').toLowerCase() === 'near';
+    const destinationChain = String(destination.blockchain || '').toLowerCase();
+    const isNearDestination = destinationChain === 'near';
+    const supportedEvmChains = new Set(['eth','ethereum','base','arb','arbitrum','op','optimism','polygon','bsc','avax','avalanche','gnosis','bera','berachain','scroll','aurora']);
+    if (!isNearDestination && !supportedEvmChains.has(destinationChain)) {
+      return res.status(400).json({ error: 'This invoice payout network is not enabled in the current EVM / NEAR checkout.' });
+    }
     if (isNearDestination ? !isNearAccount(recipient) : !isEvmAddress(recipient)) {
       return res.status(400).json({ error: isNearDestination ? 'Enter a valid NEAR payout account.' : 'Enter a valid EVM payout address.' });
     }
