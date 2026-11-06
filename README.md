@@ -1,5 +1,7 @@
 # IntentPay
 
+See [HACKATHON.md](./HACKATHON.md) for the NEAR Intents hackathon project summary and demo flow.
+
 IntentPay is a NEAR Intents / 1Click cross-chain checkout prototype. A customer selects a supported EVM or NEAR payment asset; the merchant selects a payout asset and destination address.
 
 ## Current implementation
