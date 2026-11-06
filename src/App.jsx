@@ -41,6 +41,20 @@ export default function App() {
   const [notice, setNotice] = useState('Connect your EVM wallet, choose the asset you will pay with, and set the merchant payout details.');
 
   useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem('intentpay_pending_near');
+      if (saved) {
+        const pending = JSON.parse(saved);
+        if (pending?.quote?.quote?.deadline && Date.parse(pending.quote.quote.deadline) > Date.now()) {
+          setQuote(pending.quote);
+          setOriginAsset(pending.originAsset || '');
+          setDestinationAsset(pending.destinationAsset || '');
+          setRecipient(pending.recipient || '');
+          setTxHash('NEAR wallet approval pending — check status');
+          setNotice('Returned from your NEAR wallet. Refresh payment status before attempting another deposit.');
+        } else sessionStorage.removeItem('intentpay_pending_near');
+      }
+    } catch { sessionStorage.removeItem('intentpay_pending_near'); }
     let active = true;
     (async () => {
       try {
@@ -160,9 +174,15 @@ export default function App() {
             'ft_transfer', { receiver_id: depositAddress, amount: amountIn }, 50000000000000n, 1n
           )] }];
         }
-        const result = await walletClient.signAndSendTransactions({ transactions });
+        sessionStorage.setItem('intentpay_pending_near', JSON.stringify({ quote, originAsset, destinationAsset, recipient, nearWallet }));
+        const result = await walletClient.signAndSendTransactions({ transactions, callbackUrl: window.location.href });
         const hash = result?.[0]?.transaction?.hash || result?.[0]?.transaction_outcome?.id || result?.transaction?.hash;
-        if (!hash) throw new Error('Wallet returned without a transaction hash. Check your NEAR wallet activity before trying again.');
+        if (!hash) {
+          setTxHash('NEAR transaction submitted — hash unavailable');
+          setNotice('Your NEAR wallet did not return a transaction hash. Refresh payment status before attempting anything again.');
+          return;
+        }
+        sessionStorage.removeItem('intentpay_pending_near');
         setTxHash(hash);
         setNotice('NEAR transaction submitted. Notifying 1Click and checking settlement status…');
         const submitted = await fetch('/api/deposit/submit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ txHash: hash, depositAddress, nearSenderAccount: nearWallet }) });
@@ -174,6 +194,7 @@ export default function App() {
           if (!statusResponse.ok) throw new Error(statusData.error || 'Could not read payment status.');
           setSwapStatus(statusData.status || 'UNKNOWN');
           if (TERMINAL.has(statusData.status)) {
+            sessionStorage.removeItem('intentpay_pending_near');
             setNotice(statusData.status === 'SUCCESS' ? 'Payment completed. 1Click reports that the merchant payout was delivered.' : `Payment ended with status: ${statusData.status}. Review the provider response before taking further action.`);
             return;
           }
@@ -253,6 +274,7 @@ export default function App() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Could not read status.');
       setSwapStatus(data.status || 'UNKNOWN');
+      if (TERMINAL.has(data.status)) sessionStorage.removeItem('intentpay_pending_near');
       setNotice(data.status === 'SUCCESS' ? 'Payment completed and delivered.' : `Current payment status: ${data.status || 'UNKNOWN'}`);
     } catch (e) { setNotice(e.message); }
     finally { setBusy(false); }
