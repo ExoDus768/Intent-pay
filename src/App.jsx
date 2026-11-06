@@ -313,6 +313,12 @@ export default function App() {
     } finally { setWalletAction(''); }
   }
 
+  function notifyPaymentSuccess() {
+    if ('Notification' in window && Notification.permission === 'granted') {
+      new Notification('IntentPay payment complete', { body: 'NEAR Intents confirmed that the merchant payout was delivered.' });
+    }
+  }
+
   async function createQuote() {
     const requestId = ++quoteRequestRef.current;
     setQuote(null); setTxHash(''); setSwapStatus('');
@@ -420,6 +426,7 @@ export default function App() {
           setSwapStatus(statusData.status || 'UNKNOWN');
           if (TERMINAL.has(statusData.status)) {
             sessionStorage.removeItem('intentpay_pending_near');
+            if (statusData.status === 'SUCCESS') notifyPaymentSuccess();
             setNotice(statusData.status === 'SUCCESS' ? 'Payment completed. 1Click reports that the merchant payout was delivered.' : `Payment ended with status: ${statusData.status}. Review the provider response before taking further action.`);
             return;
           }
@@ -478,7 +485,8 @@ export default function App() {
         if (!statusResponse.ok) throw new Error(statusData.error || 'Could not read payment status.');
         setSwapStatus(statusData.status || 'UNKNOWN');
         if (TERMINAL.has(statusData.status)) {
-          if (statusData.status === 'SUCCESS') { setNotice('Payment completed. 1Click reports that the merchant payout was delivered.'); if ('Notification' in window && Notification.permission === 'granted') new Notification('IntentPay payment complete', { body: 'The merchant payout has been confirmed by NEAR Intents.' }); }
+          if (statusData.status === 'SUCCESS') { notifyPaymentSuccess();
+            setNotice('Payment completed. 1Click reports that the merchant payout was delivered.'); if ('Notification' in window && Notification.permission === 'granted') new Notification('IntentPay payment complete', { body: 'The merchant payout has been confirmed by NEAR Intents.' }); }
           else setNotice(`Payment ended with status: ${statusData.status}. Review the provider response before taking further action.`);
           setBusy(false);
           return;
@@ -501,6 +509,7 @@ export default function App() {
       if (!response.ok) throw new Error(data.error || 'Could not read status.');
       setSwapStatus(data.status || 'UNKNOWN');
       if (TERMINAL.has(data.status)) sessionStorage.removeItem('intentpay_pending_near');
+      if (data.status === 'SUCCESS') notifyPaymentSuccess();
       setNotice(data.status === 'SUCCESS' ? 'Payment completed and delivered.' : `Current payment status: ${data.status || 'UNKNOWN'}`);
     } catch (e) { setNotice(e.message); }
     finally { setBusy(false); }
