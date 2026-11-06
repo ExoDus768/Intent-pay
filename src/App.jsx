@@ -34,6 +34,7 @@ export default function App() {
   const [nearModal, setNearModal] = useState(null);
   const [originChain, setOriginChain] = useState('');
   const [originAsset, setOriginAsset] = useState('');
+  const [destinationChain, setDestinationChain] = useState('');
   const [destinationAsset, setDestinationAsset] = useState('');
   const [amount, setAmount] = useState('');
   const [recipient, setRecipient] = useState('');
@@ -87,6 +88,8 @@ export default function App() {
   const originChains = useMemo(() => [...new Set(origins.map(tokenChain))].sort((a, b) => chainLabel(a).localeCompare(chainLabel(b))), [origins]);
   const originTokens = useMemo(() => origins.filter(t => tokenChain(t) === originChain).sort((a, b) => tokenPriority(a) - tokenPriority(b) || String(a.symbol || '').localeCompare(String(b.symbol || ''))), [origins, originChain]);
   const destinations = useMemo(() => tokens, [tokens]);
+  const destinationChains = useMemo(() => [...new Set(destinations.map(tokenChain))].sort((a, b) => chainLabel(a).localeCompare(chainLabel(b))), [destinations]);
+  const destinationTokens = useMemo(() => destinations.filter(t => tokenChain(t) === destinationChain).sort((a, b) => tokenPriority(a) - tokenPriority(b) || String(a.symbol || '').localeCompare(String(b.symbol || ''))), [destinations, destinationChain]);
 
   async function connectNearWallet() {
     if (!nearModal) return setNotice('NEAR wallet is still loading. Please try again shortly.');
@@ -291,10 +294,15 @@ export default function App() {
         </select>
         <label>Amount</label><input type="number" min="0" step="any" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" required />
         <div className="section-rule"><span>MERCHANT RECEIVES</span></div>
-        <label>Payout token and network</label>
-        <select value={destinationAsset} onChange={e => setDestinationAsset(e.target.value)} required>
-          <option value="">Choose merchant payout asset</option>
-          {destinations.map(t => <option key={t.assetId} value={t.assetId}>{tokenName(t)}</option>)}
+        <label>Choose payout network</label>
+        <select value={destinationChain} onChange={e => { setDestinationChain(e.target.value); setDestinationAsset(''); }} required>
+          <option value="">Select merchant payout network</option>
+          {destinationChains.map(chain => <option key={chain} value={chain}>{chainLabel(chain)}</option>)}
+        </select>
+        <label>Choose payout token</label>
+        <select value={destinationAsset} onChange={e => setDestinationAsset(e.target.value)} required disabled={!destinationChain || loadingTokens}>
+          <option value="">{!destinationChain ? 'Choose a payout network first' : 'Select available payout token'}</option>
+          {destinationTokens.map(t => <option key={t.assetId} value={t.assetId}>{t.symbol || 'TOKEN'}{t.name ? ' · ' + t.name : ''}</option>)}
         </select>
         <label>Merchant payout address</label><input value={recipient} onChange={e => setRecipient(e.target.value)} placeholder="EVM address or NEAR account" required />
         <div className="refund-note">Refund address: {isNearToken(origin || {}) ? (nearWallet ? short(nearWallet) : 'Connect NEAR wallet') : (wallet ? short(wallet) : 'Connect EVM wallet')}</div>
