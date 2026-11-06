@@ -49,12 +49,17 @@ function isEvmAddress(value) {
   return typeof value === 'string' && /^0x[a-fA-F0-9]{40}$/.test(value);
 }
 
+function isNearAccount(value) {
+  return typeof value === 'string' && value.length >= 2 && value.length <= 64 &&
+    /^[a-z0-9]+([._-][a-z0-9]+)*$/.test(value) && !value.startsWith('.') && !value.endsWith('.');
+}
+
 function getToken(tokens, assetId) {
   return tokens.find(token => token.assetId === assetId);
 }
 
 function validateQuoteBody(body, tokens) {
-  const { originAsset, destinationAsset, amount, recipient, refundTo, swapType = 'EXACT_INPUT', slippageTolerance = 100 } = body || {};
+  const { originAsset, destinationAsset, amount, recipient, refundTo, nearSenderAccount, swapType = 'EXACT_INPUT', slippageTolerance = 100 } = body || {};
   if (!originAsset || !destinationAsset || !amount || !recipient || !refundTo) {
     const error = new Error('originAsset, destinationAsset, amount, recipient, and refundTo are required.');
     error.status = 400;
@@ -82,8 +87,11 @@ function validateQuoteBody(body, tokens) {
     error.status = 400;
     throw error;
   }
-  if (!isEvmAddress(refundTo)) {
-    const error = new Error('For this EVM checkout, refundTo must be the connected EVM wallet address.');
+  const isNearOrigin = String(origin.blockchain || '').toLowerCase() === 'near';
+  if (isNearOrigin ? (!isNearAccount(refundTo) || refundTo !== nearSenderAccount) : !isEvmAddress(refundTo)) {
+    const error = new Error(isNearOrigin
+      ? 'For a NEAR-origin payment, refundTo and nearSenderAccount must be the connected NEAR account.'
+      : 'For an EVM-origin payment, refundTo must be the connected EVM wallet address.');
     error.status = 400;
     throw error;
   }
@@ -92,7 +100,7 @@ function validateQuoteBody(body, tokens) {
     error.status = 400;
     throw error;
   }
-  return { origin, destination, amount: String(amount), recipient: recipient.trim(), refundTo, slippageTolerance };
+  return { origin, destination, amount: String(amount), recipient: recipient.trim(), refundTo, nearSenderAccount, isNearOrigin, slippageTolerance };
 }
 
 app.get('/api/health', (_req, res) => res.json({ ok: true, service: 'intentpay-api' }));
@@ -137,13 +145,17 @@ app.post('/api/quote', async (req, res) => {
 });
 
 app.post('/api/deposit/submit', async (req, res) => {
-  const { txHash, depositAddress, depositMemo } = req.body || {};
+  const { txHash, depositAddress, depositMemo, nearSenderAccount } = req.body || {};
   if (typeof txHash !== 'string' || txHash.length < 10 || txHash.length > 160 ||
       typeof depositAddress !== 'string' || depositAddress.length < 5 || depositAddress.length > 160) {
     return res.status(400).json({ error: 'A valid txHash and depositAddress are required.' });
   }
   try {
     const payload = { txHash, depositAddress };
+    if (nearSenderAccount) {
+      if (!isNearAccount(nearSenderAccount)) return res.status(400).json({ error: 'nearSenderAccount is not a valid NEAR account ID.' });
+      payload.nearSenderAccount = nearSenderAccount;
+    }
     if (depositMemo) payload.memo = String(depositMemo);
     const data = await oneClick('/deposit/submit', { method: 'POST', body: JSON.stringify(payload) });
     res.json(data);
