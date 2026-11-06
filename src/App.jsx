@@ -32,6 +32,7 @@ export default function App() {
   const [nearWallet, setNearWallet] = useState('');
   const [nearSelector, setNearSelector] = useState(null);
   const [nearModal, setNearModal] = useState(null);
+  const [walletAction, setWalletAction] = useState('');
   const [originChain, setOriginChain] = useState('');
   const [originAsset, setOriginAsset] = useState('');
   const [destinationChain, setDestinationChain] = useState('');
@@ -93,19 +94,39 @@ export default function App() {
   const destinationTokens = useMemo(() => destinations.filter(t => tokenChain(t) === destinationChain).sort((a, b) => tokenPriority(a) - tokenPriority(b) || String(a.symbol || '').localeCompare(String(b.symbol || ''))), [destinations, destinationChain]);
 
   async function connectNearWallet() {
-    if (!nearModal) return setNotice('NEAR wallet is still loading. Please try again shortly.');
-    nearModal.show();
+    setWalletAction('near');
+    try {
+      if (!nearSelector || !nearModal) {
+        setNotice('NEAR wallet options are still initializing. Wait a moment and tap Connect NEAR again.');
+        return;
+      }
+      nearModal.show();
+      setNotice('Choose a NEAR wallet in the wallet window to connect your mainnet account.');
+    } catch (error) {
+      setNotice('Could not open the NEAR wallet window: ' + (error?.message || 'Unknown error') + '. Try refreshing the page.');
+    } finally { setWalletAction(''); }
   }
 
   async function connectWallet() {
-    if (!window.ethereum) return setNotice('Open MetaMask or another injected EVM wallet in this browser.');
+    setWalletAction('evm');
     try {
-      const provider = new BrowserProvider(window.ethereum);
-      await provider.send('eth_requestAccounts', []);
+      const ethereum = window.ethereum;
+      if (!ethereum) {
+        const mobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+        setNotice(mobile ? 'No EVM wallet was detected. Open IntentPay inside MetaMask or another wallet app browser, then tap Connect EVM.' : 'No EVM wallet extension was detected. Install or unlock MetaMask (or another EVM wallet), refresh IntentPay, and try again.');
+        return;
+      }
+      const provider = new BrowserProvider(ethereum);
+      const accounts = await provider.send('eth_requestAccounts', []);
+      if (!accounts?.length) throw new Error('The wallet did not return an account. Unlock it and try again.');
       const signer = await provider.getSigner();
       setWallet(await signer.getAddress());
-      setNotice('Wallet connected. Your wallet address will be used as the refund address.');
-    } catch (e) { setNotice(e.message || 'Wallet connection was cancelled.'); }
+      setNotice('EVM wallet connected. Your connected address will be used as the refund address.');
+      ethereum.on?.('accountsChanged', next => setWallet(next?.[0] || ''));
+      ethereum.on?.('chainChanged', () => setQuote(null));
+    } catch (error) {
+      setNotice(error?.code === 4001 ? 'Wallet connection was rejected. Tap Connect EVM and approve the connection in your wallet.' : 'EVM wallet connection failed: ' + (error?.message || 'Unknown wallet error'));
+    } finally { setWalletAction(''); }
   }
 
   async function createQuote() {
@@ -299,7 +320,7 @@ export default function App() {
   }
 
   return <main className="shell">
-    <nav className="nav"><a className="brand" href="#"><span className="brand-mark">I</span> IntentPay</a><div className="nav-right"><span className="status"><i />{health}</span><button className="wallet-btn" onClick={connectWallet}>{wallet ? short(wallet) : 'Connect EVM'}</button><button className="wallet-btn" onClick={connectNearWallet}>{nearWallet ? short(nearWallet) : 'Connect NEAR'}</button></div></nav>
+    <nav className="nav"><a className="brand" href="#"><span className="brand-mark">I</span> IntentPay</a><div className="nav-right"><span className="status"><i />{health}</span><button type="button" className="wallet-btn" onClick={connectWallet} disabled={walletAction === "evm"}>{wallet ? short(wallet) : walletAction === 'evm' ? 'Connecting…' : 'Connect EVM'}</button><button type="button" className="wallet-btn" onClick={connectNearWallet} disabled={walletAction === 'near'}>{nearWallet ? short(nearWallet) : walletAction === 'near' ? 'Opening…' : 'Connect NEAR'}</button></div></nav>
     <section className="hero"><div className="eyebrow">CROSS-CHAIN CHECKOUT · POWERED BY NEAR INTENTS</div><h1>One checkout.<br/><span>Any supported chain.</span></h1><p>Customers pay from a supported network. Merchants receive their selected asset at their payout address.</p></section>
     <section className="checkout">
       <div className="checkout-head"><div><div className="eyebrow">MAINNET MERCHANT CHECKOUT</div><h2>Configure payment</h2></div><span className="mainnet-pill">MAINNET</span></div>
