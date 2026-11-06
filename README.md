@@ -6,6 +6,7 @@ IntentPay is a NEAR Intents / 1Click cross-chain checkout prototype. A customer 
 
 - React + Vite checkout interface
 - Live 1Click token registry (cached server-side for five minutes)
+- Safe demo mode that simulates a checkout without calling 1Click or moving funds
 - Merchant payout asset and recipient selection
 - Server-side validation that both asset IDs exist in the live registry
 - 1Click committed quote request with a unique deposit address
@@ -36,6 +37,12 @@ npm run dev
 Set `ONECLICK_JWT` in `.env` before requesting a quote. Keep the JWT server-side. Never expose it in browser code or commit a real secret.
 
 The Vite frontend runs on port 5173 and proxies `/api` requests to Express on port 3001.
+
+## Demo mode
+
+The interface opens in Demo mode by default. It uses the live token list for the selectors but creates an illustrative quote locally; the displayed simulation never creates a real deposit address, signs a wallet transaction, or transfers funds. Use this mode for UI walkthroughs and hackathon demos.
+
+Live payment mode is disabled until the server has a valid 1Click JWT configured.
 
 ## 1Click setup
 
