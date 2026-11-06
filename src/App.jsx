@@ -4,6 +4,8 @@ import { actionCreators, setupWalletSelector } from '@near-wallet-selector/core'
 import { setupModal } from '@near-wallet-selector/modal-ui';
 import { setupMyNearWallet } from '@near-wallet-selector/my-near-wallet';
 import '@near-wallet-selector/modal-ui/styles.css';
+import { EthereumProvider } from '@walletconnect/ethereum-provider';
+import MerchantTools from './MerchantTools.jsx';
 
 const CHAIN_IDS = {
   eth: 1, ethereum: 1, base: 8453, arb: 42161, arbitrum: 42161,
@@ -36,6 +38,8 @@ export default function App() {
   const [walletMenuOpen, setWalletMenuOpen] = useState(false);
   const [siteMenuOpen, setSiteMenuOpen] = useState(false);
   const [followMenuOpen, setFollowMenuOpen] = useState(false);
+  const [invoice, setInvoice] = useState(null);
+  const [invoiceLoading, setInvoiceLoading] = useState(Boolean(new URLSearchParams(window.location.search).get('invoice')));
   const [originChain, setOriginChain] = useState('');
   const [originAsset, setOriginAsset] = useState('');
   const [destinationChain, setDestinationChain] = useState('');
@@ -53,6 +57,7 @@ export default function App() {
   const quoteRequestRef = useRef(0);
   const evmProvidersRef = useRef([]);
   const activeEvmProviderRef = useRef(null);
+  const walletConnectProviderRef = useRef(null);
   const siteMenuWrapRef = useRef(null);
   const walletMenuWrapRef = useRef(null);
 
@@ -132,6 +137,28 @@ export default function App() {
 
   const origin = useMemo(() => tokens.find(t => tokenId(t) === originAsset), [tokens, originAsset]);
   const destination = useMemo(() => tokens.find(t => tokenId(t) === destinationAsset), [tokens, destinationAsset]);
+  const invoiceId = useMemo(() => new URLSearchParams(window.location.search).get('invoice') || '', []);
+  useEffect(() => {
+    if (!invoiceId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await fetch('/api/invoices/' + encodeURIComponent(invoiceId));
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'This payment link could not be loaded.');
+        if (cancelled) return;
+        setInvoice(data);
+        setDestinationChain(String(data.destinationChain || '').toLowerCase());
+        setDestinationAsset(data.destinationAsset);
+        setRecipient(data.recipient);
+        setAmount(data.amount);
+        setNotice('Invoice loaded. Choose the asset you want to pay with. The merchant will receive the exact invoice amount through NEAR Intents.');
+      } catch (error) {
+        if (!cancelled) setNotice(error.message || 'Could not load invoice.');
+      } finally { if (!cancelled) setInvoiceLoading(false); }
+    })();
+    return () => { cancelled = true; };
+  }, [invoiceId]);
   const origins = useMemo(() => tokens.filter(t => CHAIN_IDS[tokenChain(t)] || (isNearToken(t) && (t.contractAddress || t.assetId === 'nep141:wrap.near'))), [tokens]);
   const originChains = useMemo(() => [...new Set(origins.map(tokenChain))].sort((a, b) => chainLabel(a).localeCompare(chainLabel(b))), [origins]);
   const originTokens = useMemo(() => origins.filter(t => tokenChain(t) === originChain).sort((a, b) => tokenPriority(a) - tokenPriority(b) || String(a.symbol || '').localeCompare(String(b.symbol || ''))), [origins, originChain]);
@@ -251,15 +278,51 @@ export default function App() {
     } finally { setWalletAction(''); }
   }
 
+
+  async function connectWalletConnect() {
+    setWalletAction('walletconnect');
+    try {
+      const projectId = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID;
+      if (!projectId) throw new Error('WalletConnect is not configured yet. Add VITE_WALLETCONNECT_PROJECT_ID in Vercel and redeploy.');
+      let wc = walletConnectProviderRef.current;
+      if (!wc) {
+        wc = await EthereumProvider.init({
+          projectId,
+          optionalChains: [1, 8453, 42161, 10, 137, 56, 43114, 100, 80094, 534352, 1313161554],
+          showQrModal: true,
+          metadata: {
+            name: 'IntentPay',
+            description: 'Cross-chain checkout powered by NEAR Intents',
+            url: window.location.origin,
+            icons: [window.location.origin + '/favicon.ico']
+          }
+        });
+        walletConnectProviderRef.current = wc;
+      }
+      if (!wc.session) await wc.connect();
+      activeEvmProviderRef.current = wc;
+      const provider = new BrowserProvider(wc);
+      const accounts = await provider.send('eth_requestAccounts', []);
+      if (!accounts?.length) throw new Error('WalletConnect did not return an EVM account.');
+      setWallet(await (await provider.getSigner()).getAddress());
+      setNotice('WalletConnect wallet connected. Your address will be used for refunds.');
+      wc.on('accountsChanged', next => setWallet(next?.[0] || ''));
+      wc.on('chainChanged', () => setQuote(null));
+    } catch (error) {
+      setNotice('WalletConnect failed: ' + (error?.message || 'Unknown error'));
+    } finally { setWalletAction(''); }
+  }
+
   async function createQuote() {
     const requestId = ++quoteRequestRef.current;
     setQuote(null); setTxHash(''); setSwapStatus('');
     if (isNearToken(origin || {}) ? !nearWallet : !wallet) return setNotice(isNearToken(origin || {}) ? 'Connect your NEAR wallet first. It will be used for refunds.' : 'Connect your EVM wallet first. The connected address is used for refunds.');
     if (!origin || !destination || !amount || Number(amount) <= 0 || !recipient.trim()) return setNotice('Complete the origin token, destination token, amount, and merchant payout address.');
+    if (invoice && (destination.assetId !== invoice.destinationAsset || recipient.toLowerCase() !== invoice.recipient.toLowerCase())) return setNotice('The invoice payout details cannot be changed.');
     if (recipient.startsWith('0x') && !isAddress(recipient)) return setNotice('The merchant EVM payout address is invalid.');
     if (!recipient.startsWith('0x') && !/^[a-z0-9._-]{2,64}$/i.test(recipient)) return setNotice('Enter a valid EVM address or NEAR account ID.');
     let atomicAmount;
-    try { atomicAmount = parseUnits(amount, Number(origin.decimals)).toString(); }
+    try { atomicAmount = parseUnits(amount, Number(invoice ? destination.decimals : origin.decimals)).toString(); }
     catch { return setNotice('The amount has too many decimal places for the selected token.'); }
 
     setBusy(true);
@@ -274,7 +337,8 @@ export default function App() {
           recipient: recipient.trim(),
           refundTo: isNearToken(origin) ? nearWallet : wallet,
           nearSenderAccount: isNearToken(origin) ? nearWallet : undefined,
-          swapType: 'EXACT_INPUT',
+          swapType: invoice ? 'EXACT_OUTPUT' : 'EXACT_INPUT',
+          invoiceId: invoice?.id,
           slippageTolerance: 100
         })
       });
@@ -291,7 +355,7 @@ export default function App() {
 
   useEffect(() => {
     const complete = Boolean(
-      configured && origin && destination && amount && Number(amount) > 0 &&
+      configured && !invoiceLoading && origin && destination && amount && Number(amount) > 0 &&
       recipient.trim() && (isNearToken(origin) ? nearWallet : wallet)
     );
     // Invalidate any quote response still in flight when an input changes.
@@ -306,7 +370,7 @@ export default function App() {
       clearTimeout(timer);
       quoteRequestRef.current += 1;
     };
-  }, [configured, originAsset, destinationAsset, amount, recipient, wallet, nearWallet, tokens]);
+  }, [configured, invoiceLoading, invoice?.id, originAsset, destinationAsset, amount, recipient, wallet, nearWallet, tokens]);
 
   async function sendDeposit() {
     if (!quote?.quote?.depositAddress || !origin) return;
@@ -414,7 +478,7 @@ export default function App() {
         if (!statusResponse.ok) throw new Error(statusData.error || 'Could not read payment status.');
         setSwapStatus(statusData.status || 'UNKNOWN');
         if (TERMINAL.has(statusData.status)) {
-          if (statusData.status === 'SUCCESS') setNotice('Payment completed. 1Click reports that the merchant payout was delivered.');
+          if (statusData.status === 'SUCCESS') { setNotice('Payment completed. 1Click reports that the merchant payout was delivered.'); if ('Notification' in window && Notification.permission === 'granted') new Notification('IntentPay payment complete', { body: 'The merchant payout has been confirmed by NEAR Intents.' }); }
           else setNotice(`Payment ended with status: ${statusData.status}. Review the provider response before taking further action.`);
           setBusy(false);
           return;
@@ -443,9 +507,9 @@ export default function App() {
   }
 
   return <main className="shell">
-    <nav className="nav"><div className="site-menu-wrap" ref={siteMenuWrapRef}><button type="button" className="hamburger-btn" aria-label="Open navigation menu" aria-expanded={siteMenuOpen} onClick={() => setSiteMenuOpen(open => !open)}><span></span><span></span><span></span></button>{siteMenuOpen && <div className="site-menu"><a href="#how-it-works" onClick={() => setSiteMenuOpen(false)}>How it works</a><a href="#checkout" onClick={() => setSiteMenuOpen(false)}>Supported networks</a><a href="https://github.com/ExoDus768/Intent-pay#readme" target="_blank" rel="noreferrer" onClick={() => setSiteMenuOpen(false)}>Documentation <span>↗</span></a><a href="https://github.com/ExoDus768/Intent-pay" target="_blank" rel="noreferrer" onClick={() => setSiteMenuOpen(false)}>GitHub repository <span>↗</span></a><div className="follow-menu-wrap"><button type="button" className="follow-menu-trigger" aria-expanded={followMenuOpen} aria-haspopup="true" onClick={() => setFollowMenuOpen(open => !open)}>Follow Us <span>{followMenuOpen ? '⌃' : '›'}</span></button>{followMenuOpen && <div className="follow-submenu"><div className="follow-submenu-title">Follow IntentPay</div><div className="follow-link-placeholder"><strong>X (Twitter)</strong><small>Profile link coming soon</small></div></div>}</div></div>}</div><a className="brand" href="#"><span className="brand-mark">I</span> IntentPay</a><div className="nav-right"><span className="status"><i />{health}</span><div className="wallet-menu-wrap" ref={walletMenuWrapRef}><button type="button" className="wallet-btn" onClick={() => setWalletMenuOpen(open => !open)} disabled={!!walletAction}>{walletAction === 'evm' ? 'Connecting EVM…' : walletAction === 'near' ? 'Opening NEAR…' : wallet || nearWallet ? short(wallet || nearWallet) : 'Connect Wallet'} <span aria-hidden="true">⌄</span></button>{walletMenuOpen && <div className="wallet-menu"><button type="button" onClick={() => { setWalletMenuOpen(false); connectWallet(); }} disabled={walletAction === 'evm'}><strong>EVM Wallet</strong><small>MetaMask, Zerion and other EVM wallets</small>{wallet && <small>Connected: {short(wallet)}</small>}</button><button type="button" onClick={() => { setWalletMenuOpen(false); connectNearWallet(); }} disabled={walletAction === 'near'}><strong>NEAR Wallet</strong><small>MyNearWallet and supported NEAR wallets</small>{nearWallet && <small>Connected: {short(nearWallet)}</small>}</button></div>}</div></div></nav>
+    <nav className="nav"><div className="site-menu-wrap" ref={siteMenuWrapRef}><button type="button" className="hamburger-btn" aria-label="Open navigation menu" aria-expanded={siteMenuOpen} onClick={() => setSiteMenuOpen(open => !open)}><span></span><span></span><span></span></button>{siteMenuOpen && <div className="site-menu"><a href="#how-it-works" onClick={() => setSiteMenuOpen(false)}>How it works</a><a href="#checkout" onClick={() => setSiteMenuOpen(false)}>Supported networks</a><a href="https://github.com/ExoDus768/Intent-pay#readme" target="_blank" rel="noreferrer" onClick={() => setSiteMenuOpen(false)}>Documentation <span>↗</span></a><a href="https://github.com/ExoDus768/Intent-pay" target="_blank" rel="noreferrer" onClick={() => setSiteMenuOpen(false)}>GitHub repository <span>↗</span></a><div className="follow-menu-wrap"><button type="button" className="follow-menu-trigger" aria-expanded={followMenuOpen} aria-haspopup="true" onClick={() => setFollowMenuOpen(open => !open)}>Follow Us <span>{followMenuOpen ? '⌃' : '›'}</span></button>{followMenuOpen && <div className="follow-submenu"><div className="follow-submenu-title">Follow IntentPay</div><div className="follow-link-placeholder"><strong>X (Twitter)</strong><small>Profile link coming soon</small></div></div>}</div></div>}</div><a className="brand" href="#"><span className="brand-mark">I</span> IntentPay</a><div className="nav-right"><span className="status"><i />{health}</span><MerchantTools tokens={tokens} defaultRecipient={wallet || nearWallet} /><div className="wallet-menu-wrap" ref={walletMenuWrapRef}><button type="button" className="wallet-btn" onClick={() => setWalletMenuOpen(open => !open)} disabled={!!walletAction}>{walletAction === 'evm' ? 'Connecting EVM…' : walletAction === 'near' ? 'Opening NEAR…' : walletAction === 'walletconnect' ? 'Connecting…' : wallet || nearWallet ? short(wallet || nearWallet) : 'Connect Wallet'} <span aria-hidden="true">⌄</span></button>{walletMenuOpen && <div className="wallet-menu"><button type="button" onClick={() => { setWalletMenuOpen(false); connectWallet(); }} disabled={walletAction === 'evm'}><strong>EVM Wallet</strong><small>MetaMask, Zerion and other EVM wallets</small>{wallet && <small>Connected: {short(wallet)}</small>}</button><button type="button" onClick={() => { setWalletMenuOpen(false); connectNearWallet(); }} disabled={walletAction === 'near'}><strong>NEAR Wallet</strong><small>MyNearWallet and supported NEAR wallets</small>{nearWallet && <small>Connected: {short(nearWallet)}</small>}</button><button type="button" onClick={() => { setWalletMenuOpen(false); connectWalletConnect(); }} disabled={walletAction === 'walletconnect'}><strong>WalletConnect</strong><small>Scan a QR code or open a compatible mobile wallet</small></button></div>}</div></div></nav>
     <section className="hero" id="how-it-works"><div className="eyebrow">CROSS-CHAIN CHECKOUT · POWERED BY NEAR INTENTS</div><h1>One checkout.<br/><span>Any supported chain.</span></h1><p>Customers pay from a supported network. Merchants receive their selected asset at their payout address.</p></section>
-    <section className="checkout" id="checkout">
+    <section className="checkout" id="checkout">{invoice && <div className="invoice-banner"><span className="eyebrow">PAYMENT INVOICE</span><strong>{invoice.amount} {invoice.symbol}</strong><p>{invoice.description || 'Merchant payment'} · Exact amount delivered to the merchant through NEAR Intents.</p></div>}{invoiceLoading && <p className="notice">Loading invoice details…</p>}
       <div className="checkout-head"><div><div className="eyebrow">MAINNET MERCHANT CHECKOUT</div><h2>Configure payment</h2></div><span className="mainnet-pill">MAINNET</span></div>
       <form onSubmit={e => e.preventDefault()}>
         <label>Customer pays with</label>
@@ -459,32 +523,32 @@ export default function App() {
           <option value="">{!originChain ? 'Choose a network first' : 'Select available token'}</option>
           {originTokens.map(t => <option key={t.assetId} value={t.assetId}>{t.symbol || 'TOKEN'}{t.name ? ' · ' + t.name : ''}</option>)}
         </select>
-        <label>Amount</label><input type="number" min="0" step="any" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" required />{origin && <><p className="balance-line">{balanceLoading ? 'Checking wallet balance…' : originBalance !== '' ? <>Wallet balance: <strong>{Number(originBalance).toLocaleString(undefined, { maximumFractionDigits: 8 })} {origin.symbol}</strong></> : balanceError}</p><div className="percentage-row" aria-label="Select percentage of wallet balance">{[25, 50, 75, 100].map(percent => <button key={percent} type="button" className="percentage-btn" disabled={balanceLoading || originBalance === ''} onClick={() => { try { const units = parseUnits(originBalance, Number(origin.decimals || 0)); setAmount(formatUnits(units * BigInt(percent) / 100n, Number(origin.decimals || 0))); } catch { setNotice('Could not calculate this percentage. Check the selected asset balance.'); } }}>{percent === 100 ? 'MAX' : percent + '%'}</button>)}</div></>}
+        <label>{invoice ? 'Merchant receives exactly' : 'Amount to pay'}</label><input type="number" min="0" step="any" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" required readOnly={Boolean(invoice)} />{origin && <><p className="balance-line">{balanceLoading ? 'Checking wallet balance…' : originBalance !== '' ? <>Wallet balance: <strong>{Number(originBalance).toLocaleString(undefined, { maximumFractionDigits: 8 })} {origin.symbol}</strong></> : balanceError}</p><div className="percentage-row" aria-label="Select percentage of wallet balance">{[25, 50, 75, 100].map(percent => <button key={percent} type="button" className="percentage-btn" disabled={balanceLoading || originBalance === ''} onClick={() => { try { const units = parseUnits(originBalance, Number(origin.decimals || 0)); setAmount(formatUnits(units * BigInt(percent) / 100n, Number(origin.decimals || 0))); } catch { setNotice('Could not calculate this percentage. Check the selected asset balance.'); } }}>{percent === 100 ? 'MAX' : percent + '%'}</button>)}</div></>}
         <div className="section-rule"><span>MERCHANT RECEIVES</span></div>
         <label>Choose payout network</label>
-        <select value={destinationChain} onChange={e => { setDestinationChain(e.target.value); setDestinationAsset(''); }} required>
+        <select value={destinationChain} onChange={e => { setDestinationChain(e.target.value); setDestinationAsset(''); }} required disabled={Boolean(invoice)}>
           <option value="">Select merchant payout network</option>
           {destinationChains.map(chain => <option key={chain} value={chain}>{chainLabel(chain)}</option>)}
         </select>
         <label>Choose payout token</label>
-        <select value={destinationAsset} onChange={e => setDestinationAsset(e.target.value)} required disabled={!destinationChain || loadingTokens}>
+        <select value={destinationAsset} onChange={e => setDestinationAsset(e.target.value)} required disabled={Boolean(invoice) || !destinationChain || loadingTokens}>
           <option value="">{!destinationChain ? 'Choose a payout network first' : 'Select available payout token'}</option>
           {destinationTokens.map(t => <option key={t.assetId} value={t.assetId}>{t.symbol || 'TOKEN'}{t.name ? ' · ' + t.name : ''}</option>)}
         </select>
         {destinationChain && destinationTokens.length === 0 && <p className="warning">No payout tokens are currently listed for {chainLabel(destinationChain)} in the live NEAR Intents registry. Choose another network.</p>}
         {destinationChain && destinationTokens.length > 0 && !destinationTokens.some(t => String(t.symbol || '').toUpperCase() === 'USDT') && <p className="helper-text">USDT is not currently listed as a supported payout token on {chainLabel(destinationChain)} by NEAR Intents. Other listed tokens are shown above.</p>}
-        <label>{destinationIsNear ? 'Merchant NEAR account address' : 'Merchant EVM wallet address'}</label><input value={recipient} onChange={e => setRecipient(e.target.value)} placeholder={recipientPlaceholder} autoCapitalize="none" autoCorrect="off" spellCheck={false} required disabled={!destinationChain || !destinationAsset} /><p className="helper-text">{!destinationChain ? 'Choose a payout network and token first. The required address format will appear here.' : !destinationAsset ? 'Choose a payout token to see the correct merchant address format.' : destinationIsNear ? 'Enter the merchant’s NEAR account ID, for example merchant.near' : 'Enter the merchant’s EVM address for this network, starting with 0x'}</p>
+        <label>{destinationIsNear ? 'Merchant NEAR account address' : 'Merchant EVM wallet address'}</label><input value={recipient} onChange={e => setRecipient(e.target.value)} placeholder={recipientPlaceholder} autoCapitalize="none" autoCorrect="off" spellCheck={false} required disabled={Boolean(invoice) || !destinationChain || !destinationAsset} /><p className="helper-text">{!destinationChain ? 'Choose a payout network and token first. The required address format will appear here.' : !destinationAsset ? 'Choose a payout token to see the correct merchant address format.' : destinationIsNear ? 'Enter the merchant’s NEAR account ID, for example merchant.near' : 'Enter the merchant’s EVM address for this network, starting with 0x'}</p>
         <div className="refund-note">Refund address: {isNearToken(origin || {}) ? (nearWallet ? short(nearWallet) : 'Connect NEAR wallet') : (wallet ? short(wallet) : 'Connect EVM wallet')}</div>
         <div className="quote-auto-state" role="status">{busy ? 'Getting your quote…' : quote ? 'Quote ready. Review it below.' : 'Your quote will be generated automatically when all selections are complete.'}</div>
       </form>
       {!configured && <p className="warning">Mainnet payments are locked until the server has a valid 1Click JWT. Add it as a Vercel server environment variable. Never paste it into this page.</p>}
       <p className="notice">{notice}</p>
       {quote?.quote && <div className="quote-card">
-        <div className="quote-title">Mainnet quote details</div>
+        <div className="quote-title">Mainnet quote details</div>{invoice && <p className="helper-text">Fixed-output invoice · NEAR Intents calculates the input amount required to deliver the exact merchant amount.</p>}
         <div className="quote-row"><span>Pay</span><strong>{quote.quote.amountInFormatted || formatUnits(quote.quote.amountIn, Number(origin?.decimals || 0))} {origin?.symbol}</strong></div>
         <div className="quote-row"><span>Estimated receive</span><strong>{(quote.quote.amountOutFormatted || quote.quote.amountOut) + ' ' + destination?.symbol}</strong></div>
         <div className="quote-row"><span>Merchant address</span><strong>{short(recipient)}</strong></div>
-        <div className="quote-row"><span>Quote expires</span><strong>{quote.quote.deadline ? new Date(quote.quote.deadline).toLocaleTimeString() : 'Provider-defined'}</strong></div>
+        <div className="quote-row"><span>Estimated time</span><strong>{quote.quote.timeEstimate ? Math.ceil(quote.quote.timeEstimate / 60) + ' min' : 'Provider estimate unavailable'}</strong></div><div className="quote-row"><span>Quote expires</span><strong>{quote.quote.deadline ? new Date(quote.quote.deadline).toLocaleTimeString() : 'Provider-defined'}</strong></div>
         {<div className="deposit-address"><span>Unique deposit address</span><code>{quote.quote.depositAddress}</code></div>}
         {quote.quote.depositMemo && <div className="deposit-address"><span>Required memo</span><code>{quote.quote.depositMemo}</code></div>}
         <button className="primary" onClick={sendDeposit} disabled={busy || Boolean(txHash)}>{txHash ? 'Deposit submitted' : 'Pay from connected wallet'}</button>
