@@ -286,7 +286,7 @@ export default function App() {
         </select>
         <label>Merchant payout address</label><input value={recipient} onChange={e => setRecipient(e.target.value)} placeholder="EVM address or NEAR account" required />
         <div className="refund-note">Refund address: {isNearToken(origin || {}) ? (nearWallet ? short(nearWallet) : 'Connect NEAR wallet') : (wallet ? short(wallet) : 'Connect EVM wallet')}</div>
-        <button className="primary" disabled={busy || loadingTokens}>{busy ? 'Please wait…' : 'Get mainnet payment quote'}</button>
+        <button className="primary" disabled={busy || loadingTokens || !configured}>{busy ? 'Please wait…' : 'Get mainnet payment quote'}</button>
       </form>
       {!configured && <p className="warning">Mainnet payments are locked until the server has a valid 1Click JWT. Add it as a Vercel server environment variable. Never paste it into this page.</p>}
       <p className="notice">{notice}</p>
@@ -296,11 +296,11 @@ export default function App() {
         <div className="quote-row"><span>Estimated receive</span><strong>{(quote.quote.amountOutFormatted || quote.quote.amountOut) + ' ' + destination?.symbol}</strong></div>
         <div className="quote-row"><span>Merchant address</span><strong>{short(recipient)}</strong></div>
         <div className="quote-row"><span>Quote expires</span><strong>{quote.quote.deadline ? new Date(quote.quote.deadline).toLocaleTimeString() : 'Provider-defined'}</strong></div>
-        {!quote.demo && <div className="deposit-address"><span>Unique deposit address</span><code>{quote.quote.depositAddress}</code></div>}
+        {<div className="deposit-address"><span>Unique deposit address</span><code>{quote.quote.depositAddress}</code></div>}
         {quote.quote.depositMemo && <div className="deposit-address"><span>Required memo</span><code>{quote.quote.depositMemo}</code></div>}
         <button className="primary" onClick={sendDeposit} disabled={busy || Boolean(txHash)}>{txHash ? 'Deposit submitted' : 'Pay from connected wallet'}</button>
-        {!quote.demo && txHash && <div className="tx-details"><span>Deposit transaction</span><code>{short(txHash)}</code><span>Status: {swapStatus || 'Waiting'}</span></div>}
-        {!quote.demo && txHash && <button className="secondary" onClick={refreshStatus} disabled={busy}>Refresh payment status</button>}
+        {txHash && <div className="tx-details"><span>Deposit transaction</span><code>{short(txHash)}</code><span>Status: {swapStatus || 'Waiting'}</span></div>}
+        {txHash && <button className="secondary" onClick={refreshStatus} disabled={busy}>Refresh payment status</button>}
         <p className="fineprint">MAINNET TRANSACTION · This approval transfers real assets. Verify the wallet network, token, amount, merchant address, quote expiry, and deposit address before signing. Never send a different asset to this address.</p>
       </div>}
       <div className="fineprint">{loadingTokens ? 'Loading live 1Click assets…' : `${tokens.length} live assets loaded`} · EVM and NEAR wallet deposits enabled for supported listed assets.</div>
