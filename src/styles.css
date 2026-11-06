@@ -4,3 +4,5 @@
 .mode-switch{display:flex;gap:5px;background:#0b1222;border:1px solid #34415d;border-radius:10px;padding:4px}.mode-switch button{border:0;background:transparent;color:#aab4cc;padding:8px 10px;border-radius:7px;font-size:11px;cursor:pointer}.mode-switch button.mode-active{background:#a6f36a;color:#101a10;font-weight:700}.mode-switch button:disabled{opacity:.35;cursor:not-allowed}.demo-note{font-size:11px;line-height:1.6;color:#c9f6a5;background:#14251b;border:1px solid #355b3d;padding:12px;border-radius:9px;margin:14px 0 0}
 
 .helper-text{font-size:11px;line-height:1.5;color:#91a0bc;margin:0 0 4px;padding:0 2px}.helper-text::placeholder{color:#687792}
+
+.balance-line{font-size:11px;line-height:1.5;color:#91a0bc;margin:-3px 0 4px;padding:0 2px;min-height:16px}.balance-line strong{color:#c9f6a5;font-weight:700}
