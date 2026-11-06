@@ -92,6 +92,8 @@ export default function App() {
   const destinations = useMemo(() => tokens, [tokens]);
   const destinationChains = useMemo(() => [...new Set(destinations.map(tokenChain))].sort((a, b) => chainLabel(a).localeCompare(chainLabel(b))), [destinations]);
   const destinationTokens = useMemo(() => destinations.filter(t => tokenChain(t) === destinationChain).sort((a, b) => tokenPriority(a) - tokenPriority(b) || String(a.symbol || '').localeCompare(String(b.symbol || ''))), [destinations, destinationChain]);
+  const destinationIsNear = destinationChain === 'near' || isNearToken(destinationTokens.find(t => t.assetId === destinationAsset) || {});
+  const recipientPlaceholder = destinationIsNear ? 'e.g. merchant.near' : 'e.g. 0xAbC123...7890';
 
   async function connectNearWallet() {
     setWalletAction('near');
@@ -350,7 +352,7 @@ export default function App() {
         </select>
         {destinationChain && destinationTokens.length === 0 && <p className="warning">No payout tokens are currently listed for {chainLabel(destinationChain)} in the live NEAR Intents registry. Choose another network.</p>}
         {destinationChain && destinationTokens.length > 0 && !destinationTokens.some(t => String(t.symbol || '').toUpperCase() === 'USDT') && <p className="helper-text">USDT is not currently listed as a supported payout token on {chainLabel(destinationChain)} by NEAR Intents. Other listed tokens are shown above.</p>}
-        <label>Merchant payout address</label><input value={recipient} onChange={e => setRecipient(e.target.value)} placeholder="EVM address or NEAR account" required />
+        <label>{destinationIsNear ? 'Merchant NEAR account address' : 'Merchant EVM wallet address'}</label><input value={recipient} onChange={e => setRecipient(e.target.value)} placeholder={recipientPlaceholder} autoCapitalize="none" autoCorrect="off" spellCheck={false} required disabled={!destinationChain || !destinationAsset} /><p className="helper-text">{!destinationChain ? 'Choose a payout network and token first. The required address format will appear here.' : !destinationAsset ? 'Choose a payout token to see the correct merchant address format.' : destinationIsNear ? 'Enter the merchant’s NEAR account ID, for example merchant.near' : 'Enter the merchant’s EVM address for this network, starting with 0x'}</p>
         <div className="refund-note">Refund address: {isNearToken(origin || {}) ? (nearWallet ? short(nearWallet) : 'Connect NEAR wallet') : (wallet ? short(wallet) : 'Connect EVM wallet')}</div>
         <div className="quote-auto-state" role="status">{busy ? 'Getting your quote…' : quote ? 'Quote ready. Review it below.' : 'Your quote will be generated automatically when all selections are complete.'}</div>
       </form>
