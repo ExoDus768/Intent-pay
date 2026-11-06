@@ -4,7 +4,7 @@ import cors from 'cors';
 
 const app = express();
 const PORT = Number(process.env.PORT || 3001);
-const API_BASE = process.env.ONECLICK_BASE_URL || 'https://1click.chaindefuser.com/v0';
+const API_BASE = 'https://1click.chaindefuser.com/v0';
 const TERMINAL = new Set(['SUCCESS', 'FAILED', 'REFUNDED', 'INCOMPLETE_DEPOSIT']);
 
 app.disable('x-powered-by');
@@ -107,7 +107,7 @@ app.get('/api/health', (_req, res) => res.json({ ok: true, service: 'intentpay-a
 
 app.get('/api/config', (_req, res) => res.json({
   oneClickConfigured: Boolean(process.env.ONECLICK_JWT),
-  provider: API_BASE.includes('chaindefuser.com') ? '1Click' : 'custom'
+  provider: '1Click mainnet', network: 'mainnet'
 }));
 
 app.get('/api/tokens', async (_req, res) => {
