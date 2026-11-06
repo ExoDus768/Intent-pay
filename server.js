@@ -1,11 +1,101 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import { randomBytes, createHmac, timingSafeEqual } from 'node:crypto';
+import { lookup } from 'node:dns/promises';
+import { isIP } from 'node:net';
 
 const app = express();
 const PORT = Number(process.env.PORT || 3001);
 const API_BASE = 'https://1click.chaindefuser.com/v0';
 const TERMINAL = new Set(['SUCCESS', 'FAILED', 'REFUNDED', 'INCOMPLETE_DEPOSIT']);
+const INVOICE_TTL = 60 * 60 * 24 * 180;
+
+async function redisCommand(command) {
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) {
+    const error = new Error('Merchant links, dashboard sync, and webhooks need UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN.');
+    error.status = 503;
+    throw error;
+  }
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(command)
+  });
+  const data = await response.json();
+  if (!response.ok || data.error) throw new Error(data.error || 'Persistent storage request failed.');
+  return data.result;
+}
+
+function publicInvoice(invoice) {
+  const { webhookSecret, ...safe } = invoice;
+  return { ...safe, webhookConfigured: Boolean(invoice.webhookUrl), webhookDelivered: Boolean(invoice.webhookDeliveredAt) };
+}
+
+function isPrivateIp(address) {
+  if (address.includes(':')) {
+    const value = address.toLowerCase();
+    return value === '::1' || value.startsWith('fc') || value.startsWith('fd') || value.startsWith('fe80:');
+  }
+  const parts = address.split('.').map(Number);
+  return parts[0] === 10 || parts[0] === 127 || parts[0] === 0 || parts[0] === 169 && parts[1] === 254 ||
+    parts[0] === 192 && parts[1] === 168 || parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31;
+}
+
+async function validateWebhookUrl(value) {
+  if (!value) return '';
+  let url;
+  try { url = new URL(value); } catch { throw Object.assign(new Error('Webhook URL is invalid.'), { status: 400 }); }
+  if (url.protocol !== 'https:' || url.username || url.password || !url.hostname || url.hostname === 'localhost' || url.hostname.endsWith('.local') || isIP(url.hostname)) {
+    throw Object.assign(new Error('Webhook must use a public HTTPS hostname.'), { status: 400 });
+  }
+  const addresses = await lookup(url.hostname, { all: true });
+  if (!addresses.length || addresses.some(item => isPrivateIp(item.address))) {
+    throw Object.assign(new Error('Webhook host must resolve only to public IP addresses.'), { status: 400 });
+  }
+  return url.toString();
+}
+
+async function readInvoice(id) {
+  if (typeof id !== 'string' || !/^[a-f0-9-]{24,64}$/i.test(id)) return null;
+  const raw = await redisCommand(['GET', `intentpay:invoice:${id}`]);
+  return raw ? JSON.parse(raw) : null;
+}
+
+async function writeInvoice(invoice) {
+  await redisCommand(['SET', `intentpay:invoice:${invoice.id}`, JSON.stringify(invoice), 'EX', INVOICE_TTL]);
+}
+
+async function deliverInvoiceWebhook(invoice) {
+  if (!invoice.webhookUrl || invoice.webhookDeliveredAt) return;
+  const lock = await redisCommand(['SET', `intentpay:webhook-lock:${invoice.id}`, '1', 'NX', 'EX', '60']);
+  if (lock !== 'OK') return;
+  const payload = {
+    id: `evt_${invoice.id}`, type: 'payment.succeeded', createdAt: new Date().toISOString(),
+    data: { invoiceId: invoice.id, status: 'SUCCESS', amount: invoice.amount, symbol: invoice.symbol,
+      destinationAsset: invoice.destinationAsset, recipient: invoice.recipient, depositAddress: invoice.depositAddress }
+  };
+  const body = JSON.stringify(payload);
+  const signature = createHmac('sha256', invoice.webhookSecret).update(body).digest('hex');
+  try {
+    const response = await fetch(invoice.webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-IntentPay-Event': payload.type, 'X-IntentPay-Signature': `sha256=${signature}` },
+      body,
+      signal: AbortSignal.timeout(8000)
+    });
+    if (!response.ok) throw new Error(`Webhook returned HTTP ${response.status}`);
+    invoice.webhookDeliveredAt = new Date().toISOString();
+    invoice.webhookLastError = '';
+    await writeInvoice(invoice);
+  } catch (error) {
+    invoice.webhookLastError = error.message;
+    await writeInvoice(invoice);
+    await redisCommand(['DEL', `intentpay:webhook-lock:${invoice.id}`]);
+  }
+}
 
 app.disable('x-powered-by');
 app.use(cors({ origin: process.env.APP_ORIGIN ? process.env.APP_ORIGIN.split(',') : true }));
@@ -70,8 +160,8 @@ function validateQuoteBody(body, tokens) {
     error.status = 400;
     throw error;
   }
-  if (swapType !== 'EXACT_INPUT') {
-    const error = new Error('Only EXACT_INPUT quotes are enabled in this version.');
+  if (!['EXACT_INPUT', 'EXACT_OUTPUT'].includes(swapType)) {
+    const error = new Error('Only EXACT_INPUT and EXACT_OUTPUT quotes are enabled.');
     error.status = 400;
     throw error;
   }
@@ -100,8 +190,60 @@ function validateQuoteBody(body, tokens) {
     error.status = 400;
     throw error;
   }
-  return { origin, destination, amount: String(amount), recipient: recipient.trim(), refundTo, nearSenderAccount, isNearOrigin, slippageTolerance };
+  return { origin, destination, amount: String(amount), recipient: recipient.trim(), refundTo, nearSenderAccount, isNearOrigin, slippageTolerance, swapType };
 }
+
+
+app.post('/api/invoices', async (req, res) => {
+  try {
+    const { destinationAsset, amount, recipient, description = '', webhookUrl = '' } = req.body || {};
+    const tokens = await getTokens();
+    const destination = getToken(tokens, destinationAsset);
+    if (!destination) return res.status(400).json({ error: 'Choose a payout asset from the live NEAR Intents registry.' });
+    if (typeof amount !== 'string' || !/^\\d+(\\.\\d+)?$/.test(amount) || Number(amount) <= 0) {
+      return res.status(400).json({ error: 'Invoice amount must be a positive decimal string.' });
+    }
+    const decimals = Number(destination.decimals);
+    const fraction = amount.split('.')[1] || '';
+    if (fraction.length > decimals) return res.status(400).json({ error: `This token supports at most ${decimals} decimal places.` });
+    const isNearDestination = String(destination.blockchain || '').toLowerCase() === 'near';
+    if (isNearDestination ? !isNearAccount(recipient) : !isEvmAddress(recipient)) {
+      return res.status(400).json({ error: isNearDestination ? 'Enter a valid NEAR payout account.' : 'Enter a valid EVM payout address.' });
+    }
+    const safeWebhook = await validateWebhookUrl(webhookUrl);
+    const id = randomBytes(18).toString('hex');
+    const invoice = {
+      id, destinationAsset, destinationChain: destination.blockchain, symbol: destination.symbol,
+      decimals, amount, recipient: recipient.trim(), description: String(description).slice(0, 140),
+      webhookUrl: safeWebhook, webhookSecret: safeWebhook ? randomBytes(32).toString('hex') : '',
+      createdAt: new Date().toISOString(), status: 'CREATED'
+    };
+    await writeInvoice(invoice);
+    res.status(201).json({ invoice: publicInvoice(invoice), webhookSecret: invoice.webhookSecret || undefined });
+  } catch (error) { res.status(error.status || 502).json({ error: error.message }); }
+});
+
+app.get('/api/invoices/:id', async (req, res) => {
+  try {
+    const invoice = await readInvoice(req.params.id);
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found or expired.' });
+    res.json(publicInvoice(invoice));
+  } catch (error) { res.status(error.status || 502).json({ error: error.message }); }
+});
+
+app.post('/api/invoices/:id/webhook/retry', async (req, res) => {
+  try {
+    const invoice = await readInvoice(req.params.id);
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found or expired.' });
+    if (invoice.status !== 'SUCCESS') return res.status(409).json({ error: 'Webhook retry is available only after confirmed payment success.' });
+    if (!invoice.webhookUrl) return res.status(400).json({ error: 'No webhook is configured for this invoice.' });
+    invoice.webhookDeliveredAt = '';
+    await writeInvoice(invoice);
+    await deliverInvoiceWebhook(invoice);
+    const updated = await readInvoice(invoice.id);
+    res.json(publicInvoice(updated));
+  } catch (error) { res.status(error.status || 502).json({ error: error.message }); }
+});
 
 app.get('/api/health', (_req, res) => res.json({ ok: true, service: 'intentpay-api' }));
 
@@ -119,9 +261,20 @@ app.post('/api/quote', async (req, res) => {
   try {
     const tokens = await getTokens();
     const input = validateQuoteBody(req.body, tokens);
+    let invoice = null;
+    if (req.body?.invoiceId) {
+      invoice = await readInvoice(req.body.invoiceId);
+      if (!invoice) return res.status(404).json({ error: 'This payment link is invalid or expired.' });
+      if (input.swapType !== 'EXACT_OUTPUT' || input.destination.assetId !== invoice.destinationAsset ||
+          input.recipient.toLowerCase() !== invoice.recipient.toLowerCase()) {
+        return res.status(400).json({ error: 'The quote does not match the merchant invoice.' });
+      }
+      const expectedAtomic = invoice.amount.replace('.', '').padEnd(invoice.amount.includes('.') ? invoice.amount.split('.')[0].length + invoice.decimals : invoice.amount.length + invoice.decimals, '0');
+      if (BigInt(input.amount) !== BigInt(expectedAtomic)) return res.status(400).json({ error: 'The requested output amount does not match the fixed invoice amount.' });
+    }
     const request = {
       dry: false,
-      swapType: 'EXACT_INPUT',
+      swapType: input.swapType,
       originAsset: input.origin.assetId,
       destinationAsset: input.destination.assetId,
       amount: input.amount,
@@ -138,7 +291,14 @@ app.post('/api/quote', async (req, res) => {
     if (!data?.quote?.depositAddress || !data?.quote?.amountIn) {
       return res.status(502).json({ error: '1Click returned an incomplete committed quote. No payment should be sent.' });
     }
-    res.json({ ...data, intentpay: { origin: input.origin, destination: input.destination } });
+    if (invoice) {
+      invoice.depositAddress = data.quote.depositAddress;
+      invoice.status = 'PENDING_DEPOSIT';
+      invoice.correlationId = data.correlationId || '';
+      await writeInvoice(invoice);
+      await redisCommand(['SET', `intentpay:deposit:${data.quote.depositAddress}`, invoice.id, 'EX', INVOICE_TTL]);
+    }
+    res.json({ ...data, intentpay: { origin: input.origin, destination: input.destination, invoiceId: invoice?.id || null } });
   } catch (error) {
     res.status(error.status || 502).json({ error: error.message });
   }
@@ -171,7 +331,17 @@ app.get('/api/status', async (req, res) => {
     const query = new URLSearchParams({ depositAddress });
     if (typeof depositMemo === 'string' && depositMemo) query.set('depositMemo', depositMemo);
     const data = await oneClick(`/status?${query.toString()}`, { method: 'GET' });
-    res.json({ ...data, terminal: TERMINAL.has(data.status) });
+    const invoiceId = await redisCommand(['GET', `intentpay:deposit:${depositAddress}`]);
+    if (invoiceId) {
+      const invoice = await readInvoice(invoiceId);
+      if (invoice) {
+        invoice.status = data.status || invoice.status;
+        invoice.lastCheckedAt = new Date().toISOString();
+        await writeInvoice(invoice);
+        if (data.status === 'SUCCESS') await deliverInvoiceWebhook(invoice);
+      }
+    }
+    res.json({ ...data, terminal: TERMINAL.has(data.status), invoiceId: invoiceId || null });
   } catch (error) { res.status(error.status || 502).json({ error: error.message }); }
 });
 
