@@ -337,14 +337,21 @@ app.get('/api/status', async (req, res) => {
     const query = new URLSearchParams({ depositAddress });
     if (typeof depositMemo === 'string' && depositMemo) query.set('depositMemo', depositMemo);
     const data = await oneClick(`/status?${query.toString()}`, { method: 'GET' });
-    const invoiceId = await redisCommand(['GET', `intentpay:deposit:${depositAddress}`]);
-    if (invoiceId) {
-      const invoice = await readInvoice(invoiceId);
-      if (invoice) {
-        invoice.status = data.status || invoice.status;
-        invoice.lastCheckedAt = new Date().toISOString();
-        await writeInvoice(invoice);
-        if (data.status === 'SUCCESS') await deliverInvoiceWebhook(invoice);
+    let invoiceId = null;
+    if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
+      try {
+        invoiceId = await redisCommand(['GET', `intentpay:deposit:${depositAddress}`]);
+        if (invoiceId) {
+          const invoice = await readInvoice(invoiceId);
+          if (invoice) {
+            invoice.status = data.status || invoice.status;
+            invoice.lastCheckedAt = new Date().toISOString();
+            await writeInvoice(invoice);
+            if (data.status === 'SUCCESS') await deliverInvoiceWebhook(invoice);
+          }
+        }
+      } catch (storageError) {
+        console.error('Invoice status sync failed:', storageError.message);
       }
     }
     res.json({ ...data, terminal: TERMINAL.has(data.status), invoiceId: invoiceId || null });
