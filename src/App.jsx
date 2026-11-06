@@ -18,6 +18,7 @@ const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 export default function App() {
   const [health, setHealth] = useState('Checking service…');
   const [configured, setConfigured] = useState(false);
+  const [demoMode, setDemoMode] = useState(true);
   const [tokens, setTokens] = useState([]);
   const [loadingTokens, setLoadingTokens] = useState(true);
   const [wallet, setWallet] = useState('');
@@ -61,7 +62,7 @@ export default function App() {
   async function createQuote(e) {
     e.preventDefault();
     setQuote(null); setTxHash(''); setSwapStatus('');
-    if (!wallet) return setNotice('Connect your wallet first. The connected address is used for refunds.');
+    if (!demoMode && !wallet) return setNotice('Connect your wallet first. The connected address is used for refunds.');
     if (!origin || !destination || !amount || Number(amount) <= 0 || !recipient.trim()) return setNotice('Complete the origin token, destination token, amount, and merchant payout address.');
     if (recipient.startsWith('0x') && !isAddress(recipient)) return setNotice('The merchant EVM payout address is invalid.');
     if (!recipient.startsWith('0x') && !/^[a-z0-9._-]{2,64}$/i.test(recipient)) return setNotice('Enter a valid EVM address or NEAR account ID.');
@@ -70,6 +71,19 @@ export default function App() {
     catch { return setNotice('The amount has too many decimal places for the selected token.'); }
 
     setBusy(true);
+    if (demoMode) {
+      setQuote({ demo: true, quote: {
+        amountIn: atomicAmount,
+        amountInFormatted: amount,
+        amountOutFormatted: 'Not priced in demo mode',
+        depositAddress: 'SIMULATION ONLY — DO NOT SEND FUNDS',
+        deadline: new Date(Date.now() + 10 * 60 * 1000).toISOString()
+      }});
+      setSwapStatus('SIMULATED');
+      setNotice('Demo quote created. No wallet transaction will be requested and no funds will move.');
+      setBusy(false);
+      return;
+    }
     setNotice('Requesting a committed 1Click quote…');
     try {
       const response = await fetch('/api/quote', {
@@ -174,7 +188,10 @@ export default function App() {
     <nav className="nav"><a className="brand" href="#"><span className="brand-mark">I</span> IntentPay</a><div className="nav-right"><span className="status"><i />{health}</span><button className="wallet-btn" onClick={connectWallet}>{wallet ? short(wallet) : 'Connect wallet'}</button></div></nav>
     <section className="hero"><div className="eyebrow">CROSS-CHAIN CHECKOUT · POWERED BY NEAR INTENTS</div><h1>One checkout.<br/><span>Any supported chain.</span></h1><p>Customers pay from a supported network. Merchants receive their selected asset at their payout address.</p></section>
     <section className="checkout">
-      <div className="checkout-head"><div><div className="eyebrow">MERCHANT CHECKOUT</div><h2>Configure payment</h2></div><span className="pill">{configured ? '1Click key configured' : 'API key required'}</span></div>
+      <div className="checkout-head"><div><div className="eyebrow">MERCHANT CHECKOUT</div><h2>Configure payment</h2></div><div className="mode-switch">
+        <button type="button" className={demoMode ? 'mode-active' : ''} onClick={() => { setDemoMode(true); setQuote(null); setTxHash(''); setSwapStatus(''); }}>Demo</button>
+        <button type="button" className={!demoMode ? 'mode-active' : ''} disabled={!configured} onClick={() => { setDemoMode(false); setQuote(null); setTxHash(''); setSwapStatus(''); }}>Live payment</button>
+      </div></div>
       <form onSubmit={createQuote}>
         <label>Customer pays with</label>
         <select value={originAsset} onChange={e => setOriginAsset(e.target.value)} required>
@@ -190,22 +207,26 @@ export default function App() {
         </select>
         <label>Merchant payout address</label><input value={recipient} onChange={e => setRecipient(e.target.value)} placeholder="EVM address or NEAR account" required />
         <div className="refund-note">Refund address: {wallet ? short(wallet) : 'Connect wallet to use your address'}</div>
-        <button className="primary" disabled={busy || loadingTokens || !configured}>{busy ? 'Please wait…' : 'Get payment quote'}</button>
+        <button className="primary" disabled={busy || loadingTokens}>{busy ? 'Please wait…' : demoMode ? 'Create demo quote' : 'Get live payment quote'}</button>
       </form>
-      {!configured && <p className="warning">Add your 1Click JWT as a server environment variable before requesting quotes. Never paste it into this page.</p>}
+      {demoMode
+        ? <p className="demo-note">DEMO MODE · Illustrative values only. No deposit address is created and no assets are transferred.</p>
+        : !configured && <p className="warning">Add your 1Click JWT as a server environment variable before requesting live quotes. Never paste it into this page.</p>}
       <p className="notice">{notice}</p>
       {quote?.quote && <div className="quote-card">
-        <div className="quote-title">Quote details</div>
+        <div className="quote-title">{quote.demo ? 'Demo quote — no funds move' : 'Live quote details'}</div>
         <div className="quote-row"><span>Pay</span><strong>{quote.quote.amountInFormatted || formatUnits(quote.quote.amountIn, Number(origin?.decimals || 0))} {origin?.symbol}</strong></div>
-        <div className="quote-row"><span>Estimated receive</span><strong>{quote.quote.amountOutFormatted || quote.quote.amountOut} {destination?.symbol}</strong></div>
+        <div className="quote-row"><span>Estimated receive</span><strong>{quote.demo ? 'Not priced in demo' : (quote.quote.amountOutFormatted || quote.quote.amountOut) + ' ' + destination?.symbol}</strong></div>
         <div className="quote-row"><span>Merchant address</span><strong>{short(recipient)}</strong></div>
         <div className="quote-row"><span>Quote expires</span><strong>{quote.quote.deadline ? new Date(quote.quote.deadline).toLocaleTimeString() : 'Provider-defined'}</strong></div>
-        <div className="deposit-address"><span>Unique deposit address</span><code>{quote.quote.depositAddress}</code></div>
+        {!quote.demo && <div className="deposit-address"><span>Unique deposit address</span><code>{quote.quote.depositAddress}</code></div>}
         {quote.quote.depositMemo && <div className="deposit-address"><span>Required memo</span><code>{quote.quote.depositMemo}</code></div>}
-        <button className="primary" onClick={sendDeposit} disabled={busy || Boolean(txHash)}>{txHash ? 'Deposit submitted' : 'Pay from connected wallet'}</button>
-        {txHash && <div className="tx-details"><span>Deposit transaction</span><code>{short(txHash)}</code><span>Status: {swapStatus || 'Waiting'}</span></div>}
-        {txHash && <button className="secondary" onClick={refreshStatus} disabled={busy}>Refresh payment status</button>}
-        <p className="fineprint">Only proceed if the wallet network, token, amount, and deposit address are correct. Never send a different asset to this address.</p>
+        {quote.demo
+          ? <button className="primary" onClick={() => { setSwapStatus('SIMULATED_SUCCESS'); setNotice('Simulation complete. No funds were transferred and no real payment was made.'); }}>Simulate payment — no funds move</button>
+          : <button className="primary" onClick={sendDeposit} disabled={busy || Boolean(txHash)}>{txHash ? 'Deposit submitted' : 'Pay from connected wallet'}</button>}
+        {!quote.demo && txHash && <div className="tx-details"><span>Deposit transaction</span><code>{short(txHash)}</code><span>Status: {swapStatus || 'Waiting'}</span></div>}
+        {!quote.demo && txHash && <button className="secondary" onClick={refreshStatus} disabled={busy}>Refresh payment status</button>}
+        <p className="fineprint">{quote.demo ? 'This is a visual demo only. It does not call 1Click, create a deposit address, or send any funds.' : 'Only proceed if the wallet network, token, amount, and deposit address are correct. Never send a different asset to this address.'}</p>
       </div>}
       <div className="fineprint">{loadingTokens ? 'Loading live 1Click assets…' : `${tokens.length} live assets loaded`} · EVM wallet deposits enabled for listed networks. NEAR wallet payments are a separate integration step.</div>
     </section>
