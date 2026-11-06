@@ -257,11 +257,9 @@ export default function App() {
 
   async function connectWallet() {
     setWalletAction('evm');
-    setWalletFeedback('Looking for an EVM wallet…');
+    setWalletFeedback('Checking the wallet connection…');
+    let stage = 'wallet discovery';
     try {
-      // Request wallet announcements, then try each distinct injected provider.
-      // Some mobile wallet browsers expose a stale EIP-6963 bridge alongside
-      // the working window.ethereum provider.
       window.dispatchEvent(new Event('eip6963:requestProvider'));
       await new Promise(resolve => setTimeout(resolve, 1000));
       const announced = evmProvidersRef.current;
@@ -271,39 +269,36 @@ export default function App() {
         value?.providerInfo?.name || value?.name || value?.info?.name || value?.info?.rdns || ''
       ) + (value?.isZerion ? ' zerion' : ''));
       const candidates = [
+        ...(injected ? [injected] : []),
         ...injectedProviders.filter(isZerion),
-        ...(injected && isZerion(injected) ? [injected] : []),
         ...announced.filter(item => /zerion/i.test((item.info?.name || '') + ' ' + (item.info?.rdns || ''))).map(item => item.provider),
         ...injectedProviders,
-        ...(injected ? [injected] : []),
         ...announced.map(item => item.provider)
       ].filter((provider, index, all) =>
         provider && typeof provider.request === 'function' && all.indexOf(provider) === index
       );
-
-      if (!candidates.length) {
-        const mobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-        throw new Error(mobile
-          ? 'No working wallet connection was found. Open IntentPay in your wallet app browser, or use WalletConnect after it is configured.'
-          : 'No injected EVM wallet was detected. Install or unlock an EVM wallet, or use WalletConnect.');
-      }
+      if (!candidates.length) throw new Error('No injected EVM wallet was detected. Open this page inside your wallet app browser or configure WalletConnect.');
 
       let connected = false;
       let lastError = null;
-      for (const selected of candidates) {
+      for (let index = 0; index < candidates.length; index++) {
+        const selected = candidates[index];
         try {
-          const provider = new BrowserProvider(selected);
-          const accounts = await provider.send('eth_requestAccounts', []);
-          if (!accounts?.length) throw new Error('The wallet did not return an account.');
-          const signer = await provider.getSigner();
+          stage = 'requesting accounts from wallet ' + (index + 1) + '/' + candidates.length;
+          // Use the standard EIP-1193 request interface directly. This avoids
+          // ethers' provider wrapper during the wallet's permission handshake.
+          const accounts = await selected.request({ method: 'eth_requestAccounts' });
+          if (!Array.isArray(accounts) || !accounts.length) throw new Error('Wallet returned no accounts.');
+          stage = 'reading connected account';
+          const provider = new BrowserProvider(selected, 'any');
+          const signer = await provider.getSigner(accounts[0]);
           const address = await signer.getAddress();
           activeEvmProviderRef.current = selected;
           setWallet(address);
           setWalletFeedback('Wallet connected successfully.');
-          const announcedWallet = announced.find(item => item.provider === selected);
-          const walletName = isZerion(selected) || /zerion/i.test((announcedWallet?.info?.name || '') + ' ' + (announcedWallet?.info?.rdns || ''))
-            ? 'Zerion'
-            : (announcedWallet?.info?.name || 'EVM');
+          const item = announced.find(entry => entry.provider === selected);
+          const walletName = isZerion(selected) || /zerion/i.test((item?.info?.name || '') + ' ' + (item?.info?.rdns || ''))
+            ? 'Zerion' : (item?.info?.name || 'EVM');
           setNotice(walletName + ' wallet connected. Your connected address will be used as the refund address.');
           selected.on?.('accountsChanged', next => setWallet(next?.[0] || ''));
           selected.on?.('chainChanged', () => setQuote(null));
@@ -314,17 +309,13 @@ export default function App() {
         }
       }
       if (!connected) {
-        const message = lastError?.code === 4001
-          ? 'Connection was rejected in your wallet. Approve the request to continue.'
-          : (lastError?.message || 'The wallet could not complete the connection request.');
-        throw new Error(message);
+        const detail = lastError?.stack || lastError?.message || String(lastError || 'Unknown provider error');
+        throw new Error(stage + ': ' + detail);
       }
     } catch (error) {
-      const message = error?.code === 4001
-        ? 'Connection was rejected in your wallet. Approve the request to continue.'
-        : (error?.message || 'Unknown wallet error');
-      setWalletFeedback('EVM connection failed: ' + message);
-      setNotice('EVM wallet connection failed: ' + message);
+      const detail = error?.stack || error?.message || 'Unknown wallet error';
+      setWalletFeedback('EVM connection failed: ' + detail);
+      setNotice('EVM wallet connection failed. Diagnostic: ' + detail);
     } finally { setWalletAction(''); }
   }
 
