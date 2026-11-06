@@ -17,7 +17,10 @@
     "ethers": "^6.13.5",
     "express": "^4.21.2",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "@near-wallet-selector/core": "^8.10.0",
+    "@near-wallet-selector/modal-ui": "^8.10.0",
+    "@near-wallet-selector/my-near-wallet": "^8.10.0"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.4",
