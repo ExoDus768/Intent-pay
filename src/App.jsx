@@ -33,6 +33,7 @@ export default function App() {
   const [nearSelector, setNearSelector] = useState(null);
   const [nearModal, setNearModal] = useState(null);
   const [walletAction, setWalletAction] = useState('');
+  const [walletMenuOpen, setWalletMenuOpen] = useState(false);
   const [originChain, setOriginChain] = useState('');
   const [originAsset, setOriginAsset] = useState('');
   const [destinationChain, setDestinationChain] = useState('');
@@ -416,7 +417,7 @@ export default function App() {
   }
 
   return <main className="shell">
-    <nav className="nav"><a className="brand" href="#"><span className="brand-mark">I</span> IntentPay</a><div className="nav-right"><span className="status"><i />{health}</span><button type="button" className="wallet-btn" onClick={connectWallet} disabled={walletAction === "evm"}>{wallet ? short(wallet) : walletAction === 'evm' ? 'Connecting…' : 'Connect EVM'}</button><button type="button" className="wallet-btn" onClick={connectNearWallet} disabled={walletAction === 'near'}>{nearWallet ? short(nearWallet) : walletAction === 'near' ? 'Opening…' : 'Connect NEAR'}</button></div></nav>
+    <nav className="nav"><a className="brand" href="#"><span className="brand-mark">I</span> IntentPay</a><div className="nav-right"><span className="status"><i />{health}</span><div className="wallet-menu-wrap"><button type="button" className="wallet-btn" onClick={() => setWalletMenuOpen(open => !open)} disabled={!!walletAction}>{walletAction === 'evm' ? 'Connecting EVM…' : walletAction === 'near' ? 'Opening NEAR…' : wallet || nearWallet ? short(wallet || nearWallet) : 'Connect Wallet'} <span aria-hidden="true">⌄</span></button>{walletMenuOpen && <div className="wallet-menu"><button type="button" onClick={() => { setWalletMenuOpen(false); connectWallet(); }} disabled={walletAction === 'evm'}><strong>EVM Wallet</strong><small>MetaMask, Zerion and other EVM wallets</small>{wallet && <small>Connected: {short(wallet)}</small>}</button><button type="button" onClick={() => { setWalletMenuOpen(false); connectNearWallet(); }} disabled={walletAction === 'near'}><strong>NEAR Wallet</strong><small>MyNearWallet and supported NEAR wallets</small>{nearWallet && <small>Connected: {short(nearWallet)}</small>}</button></div>}</div></div></nav>
     <section className="hero"><div className="eyebrow">CROSS-CHAIN CHECKOUT · POWERED BY NEAR INTENTS</div><h1>One checkout.<br/><span>Any supported chain.</span></h1><p>Customers pay from a supported network. Merchants receive their selected asset at their payout address.</p></section>
     <section className="checkout">
       <div className="checkout-head"><div><div className="eyebrow">MAINNET MERCHANT CHECKOUT</div><h2>Configure payment</h2></div><span className="mainnet-pill">MAINNET</span></div>
