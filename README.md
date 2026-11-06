@@ -1,6 +1,6 @@
 # IntentPay
 
-IntentPay is a NEAR Intents / 1Click cross-chain checkout prototype. A customer selects a supported EVM payment asset; the merchant selects a payout asset and destination address.
+IntentPay is a NEAR Intents / 1Click cross-chain checkout prototype. A customer selects a supported EVM or NEAR payment asset; the merchant selects a payout asset and destination address.
 
 ## Current implementation
 
@@ -11,6 +11,9 @@ IntentPay is a NEAR Intents / 1Click cross-chain checkout prototype. A customer 
 - Server-side validation that both asset IDs exist in the live registry
 - 1Click committed quote request with a unique deposit address
 - EVM wallet connection and ERC-20 / native-token deposit transaction
+- NEAR Wallet Selector connection and NEP-141 deposits
+- Native NEAR wrapping to wNEAR before sending to a 1Click deposit address
+- NEAR sender account included in 1Click deposit notifications
 - Network switching for configured EVM networks
 - Transaction confirmation before deposit notification
 - 1Click deposit submission and status polling
@@ -18,9 +21,13 @@ IntentPay is a NEAR Intents / 1Click cross-chain checkout prototype. A customer 
 - Server-side 1Click JWT; no secret in browser code
 - Vercel serverless-compatible Express export
 
+## Supported wallet networks
+
+NEAR mainnet deposits are supported through NEAR Wallet Selector for NEP-141 assets listed by the live registry, including wrapped NEAR. Native NEAR is wrapped to wNEAR in the wallet transaction before transfer.
+
 ## Supported EVM wallet networks
 
-The current wallet-send implementation maps these 1Click registry chain identifiers to EVM chain IDs: Ethereum, Base, Arbitrum, Optimism, Polygon, BNB Smart Chain, Avalanche, Gnosis, Berachain, Scroll, and Aurora.
+The EVM wallet-send implementation maps these 1Click registry chain identifiers to EVM chain IDs: Ethereum, Base, Arbitrum, Optimism, Polygon, BNB Smart Chain, Avalanche, Gnosis, Berachain, Scroll, and Aurora.
 
 The live token list can include other chains. Their assets may appear as payout choices, but the browser deposit flow is not enabled for every chain yet. Unsupported origin networks must not be used to send a deposit.
 
@@ -64,7 +71,7 @@ A community-built 1Click-compatible sandbox called Tidepool has been announced, 
 This is a hackathon prototype, not an audited payment processor.
 
 - The current checkout form collects merchant payout details at payment time. It does not yet create persistent merchant accounts, save checkout sessions, or issue shareable merchant payment links.
-- EVM deposits are implemented for the mapped networks. NEAR wallet signing and NEP-141 transfers are not implemented yet.
+- NEAR deposits use NEAR mainnet and the MyNearWallet wallet-selector module. The NEAR-origin flow supports registry-listed NEP-141 contracts and wraps native NEAR to wNEAR before transfer. This path has not yet been end-to-end tested with a live 1Click quote.
 - Other non-EVM wallet deposit flows are not implemented, even if their assets appear in the live registry as payout options.
 - There is no persistent order database, webhook, reconciliation worker, merchant dashboard, or refund-management interface.
 - The server validates asset IDs against the live token registry and validates the EVM refund address, but production deployment still needs stronger schema validation, abuse controls, rate limiting, monitoring, and security review.
