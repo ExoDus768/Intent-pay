@@ -3,6 +3,7 @@ import QRCode from 'qrcode';
 
 const HISTORY_KEY = 'intentpay_invoice_history_v1';
 const SECRET_KEY = 'intentpay_webhook_secrets_v1';
+const SUPPORTED_PAYOUT_CHAINS = new Set(['eth','ethereum','base','arb','arbitrum','op','optimism','polygon','bsc','avax','avalanche','gnosis','bera','berachain','scroll','aurora','near']);
 const chainLabel = value => ({eth:'Ethereum',ethereum:'Ethereum',arb:'Arbitrum',arbitrum:'Arbitrum',op:'Optimism',optimism:'Optimism',avax:'Avalanche',avalanche:'Avalanche',bera:'Berachain'}[String(value || '').toLowerCase()] || String(value || '').replace(/[-_]+/g, ' ').replace(/\\b\\w/g, c => c.toUpperCase()));
 
 function readHistory() {
@@ -32,7 +33,7 @@ export default function MerchantTools({ tokens = [], defaultRecipient = '' }) {
     if (defaultRecipient && !recipient) setRecipient(defaultRecipient);
   }, [defaultRecipient]);
 
-  const chains = useMemo(() => [...new Set(tokens.map(t => String(t.blockchain || '').toLowerCase()))].sort(), [tokens]);
+  const chains = useMemo(() => [...new Set(tokens.map(t => String(t.blockchain || '').toLowerCase()).filter(value => SUPPORTED_PAYOUT_CHAINS.has(value)))].sort(), [tokens]);
   const chainTokens = useMemo(() => tokens.filter(t => String(t.blockchain || '').toLowerCase() === chain), [tokens, chain]);
 
   async function refreshInvoices() {
