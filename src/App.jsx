@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { BrowserProvider, Contract, formatUnits, isAddress, parseUnits } from 'ethers';
 import { actionCreators, setupWalletSelector } from '@near-wallet-selector/core';
 import { setupModal } from '@near-wallet-selector/modal-ui';
@@ -43,6 +43,7 @@ export default function App() {
   const [swapStatus, setSwapStatus] = useState('');
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('Connect your EVM or NEAR mainnet wallet, choose the asset you will pay with, and set the merchant payout details.');
+  const quoteRequestRef = useRef(0);
 
   useEffect(() => {
     try {
@@ -107,8 +108,8 @@ export default function App() {
     } catch (e) { setNotice(e.message || 'Wallet connection was cancelled.'); }
   }
 
-  async function createQuote(e) {
-    e.preventDefault();
+  async function createQuote() {
+    const requestId = ++quoteRequestRef.current;
     setQuote(null); setTxHash(''); setSwapStatus('');
     if (isNearToken(origin || {}) ? !nearWallet : !wallet) return setNotice(isNearToken(origin || {}) ? 'Connect your NEAR wallet first. It will be used for refunds.' : 'Connect your EVM wallet first. The connected address is used for refunds.');
     if (!origin || !destination || !amount || Number(amount) <= 0 || !recipient.trim()) return setNotice('Complete the origin token, destination token, amount, and merchant payout address.');
@@ -136,11 +137,33 @@ export default function App() {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Quote request failed.');
+      if (requestId !== quoteRequestRef.current) return;
       setQuote(data);
-      setNotice('Quote reserved. Check the amount, payout details, and expiry before sending funds.');
-    } catch (e) { setNotice(e.message || 'Could not create quote.'); }
-    finally { setBusy(false); }
+      setNotice('Quote ready. Review the amount, payout details, and expiry before approving payment.');
+    } catch (e) {
+      if (requestId === quoteRequestRef.current) setNotice(e.message || 'Could not create quote.');
+    }
+    finally { if (requestId === quoteRequestRef.current) setBusy(false); }
   }
+
+  useEffect(() => {
+    const complete = Boolean(
+      configured && origin && destination && amount && Number(amount) > 0 &&
+      recipient.trim() && (isNearToken(origin) ? nearWallet : wallet)
+    );
+    // Invalidate any quote response still in flight when an input changes.
+    quoteRequestRef.current += 1;
+    setQuote(null);
+    setTxHash('');
+    setSwapStatus('');
+    if (!complete) return undefined;
+
+    const timer = setTimeout(() => { createQuote(); }, 650);
+    return () => {
+      clearTimeout(timer);
+      quoteRequestRef.current += 1;
+    };
+  }, [configured, originAsset, destinationAsset, amount, recipient, wallet, nearWallet, tokens]);
 
   async function sendDeposit() {
     if (!quote?.quote?.depositAddress || !origin) return;
@@ -280,7 +303,7 @@ export default function App() {
     <section className="hero"><div className="eyebrow">CROSS-CHAIN CHECKOUT · POWERED BY NEAR INTENTS</div><h1>One checkout.<br/><span>Any supported chain.</span></h1><p>Customers pay from a supported network. Merchants receive their selected asset at their payout address.</p></section>
     <section className="checkout">
       <div className="checkout-head"><div><div className="eyebrow">MAINNET MERCHANT CHECKOUT</div><h2>Configure payment</h2></div><span className="mainnet-pill">MAINNET</span></div>
-      <form onSubmit={createQuote}>
+      <form onSubmit={e => e.preventDefault()}>
         <label>Customer pays with</label>
         <label>Choose network</label>
         <select value={originChain} onChange={e => { setOriginChain(e.target.value); setOriginAsset(''); }} required>
@@ -308,7 +331,7 @@ export default function App() {
         {destinationChain && destinationTokens.length > 0 && !destinationTokens.some(t => String(t.symbol || '').toUpperCase() === 'USDT') && <p className="helper-text">USDT is not currently listed as a supported payout token on {chainLabel(destinationChain)} by NEAR Intents. Other listed tokens are shown above.</p>}
         <label>Merchant payout address</label><input value={recipient} onChange={e => setRecipient(e.target.value)} placeholder="EVM address or NEAR account" required />
         <div className="refund-note">Refund address: {isNearToken(origin || {}) ? (nearWallet ? short(nearWallet) : 'Connect NEAR wallet') : (wallet ? short(wallet) : 'Connect EVM wallet')}</div>
-        <button className="primary" disabled={busy || loadingTokens || !configured}>{busy ? 'Please wait…' : 'Get mainnet payment quote'}</button>
+        <div className="quote-auto-state" role="status">{busy ? 'Getting your quote…' : quote ? 'Quote ready. Review it below.' : 'Your quote will be generated automatically when all selections are complete.'}</div>
       </form>
       {!configured && <p className="warning">Mainnet payments are locked until the server has a valid 1Click JWT. Add it as a Vercel server environment variable. Never paste it into this page.</p>}
       <p className="notice">{notice}</p>
