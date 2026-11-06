@@ -11,7 +11,7 @@ const CHAIN_IDS = {
   avalanche: 43114, gnosis: 100, bera: 80094, berachain: 80094,
   scroll: 534352, aurora: 1313161554
 };
-const ERC20_ABI = ['function transfer(address to, uint256 amount) returns (bool)'];
+const ERC20_ABI = ['function transfer(address to, uint256 amount) returns (bool)', 'function balanceOf(address owner) view returns (uint256)'];
 const TERMINAL = new Set(['SUCCESS', 'FAILED', 'REFUNDED', 'INCOMPLETE_DEPOSIT']);
 const tokenChain = t => String(t.blockchain || '').toLowerCase();
 const isNearToken = t => tokenChain(t) === 'near';
@@ -38,6 +38,9 @@ export default function App() {
   const [destinationChain, setDestinationChain] = useState('');
   const [destinationAsset, setDestinationAsset] = useState('');
   const [amount, setAmount] = useState('');
+  const [originBalance, setOriginBalance] = useState('');
+  const [balanceLoading, setBalanceLoading] = useState(false);
+  const [balanceError, setBalanceError] = useState('');
   const [recipient, setRecipient] = useState('');
   const [quote, setQuote] = useState(null);
   const [txHash, setTxHash] = useState('');
@@ -108,6 +111,74 @@ export default function App() {
   const destinations = useMemo(() => tokens, [tokens]);
   const destinationChains = useMemo(() => [...new Set(destinations.map(tokenChain))].sort((a, b) => chainLabel(a).localeCompare(chainLabel(b))), [destinations]);
   const destinationTokens = useMemo(() => destinations.filter(t => tokenChain(t) === destinationChain).sort((a, b) => tokenPriority(a) - tokenPriority(b) || String(a.symbol || '').localeCompare(String(b.symbol || ''))), [destinations, destinationChain]);
+  useEffect(() => {
+    let cancelled = false;
+    async function loadSelectedAssetBalance() {
+      setOriginBalance('');
+      setBalanceError('');
+      if (!origin) return;
+      const nearSource = isNearToken(origin);
+      const account = nearSource ? nearWallet : wallet;
+      if (!account) {
+        setBalanceError(nearSource ? 'Connect your NEAR wallet to see your balance.' : 'Connect your EVM wallet to see your balance.');
+        return;
+      }
+      setBalanceLoading(true);
+      try {
+        let rawBalance;
+        if (nearSource) {
+          const contractId = origin.contractAddress || String(origin.assetId || '').replace(/^nep141:/, '');
+          if (contractId) {
+            const args = btoa(JSON.stringify({ account_id: account }));
+            const response = await fetch('https://rpc.mainnet.near.org', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                jsonrpc: '2.0', id: 'intentpay-balance', method: 'query',
+                params: { request_type: 'call_function', finality: 'final', account_id: contractId, method_name: 'ft_balance_of', args_base64: args }
+              })
+            });
+            const data = await response.json();
+            if (!response.ok || data.error) throw new Error(data.error?.cause?.name || data.error?.message || 'Could not read NEAR token balance.');
+            rawBalance = JSON.parse(new TextDecoder().decode(new Uint8Array(data.result.result)));
+          } else {
+            const response = await fetch('https://rpc.mainnet.near.org', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ jsonrpc: '2.0', id: 'intentpay-balance', method: 'query', params: { request_type: 'view_account', finality: 'final', account_id: account } })
+            });
+            const data = await response.json();
+            if (!response.ok || data.error) throw new Error(data.error?.message || 'Could not read NEAR account balance.');
+            rawBalance = data.result.amount;
+          }
+        } else {
+          const providerObject = activeEvmProviderRef.current || window.ethereum;
+          if (!providerObject) throw new Error('Open IntentPay inside your EVM wallet browser to read the balance.');
+          const provider = new BrowserProvider(providerObject);
+          const network = await provider.getNetwork();
+          const expectedChain = CHAIN_IDS[tokenChain(origin)];
+          if (expectedChain && Number(network.chainId) !== expectedChain) {
+            throw new Error('Switch your wallet to ' + chainLabel(tokenChain(origin)) + ' to view this balance.');
+          }
+          if (origin.contractAddress) {
+            const tokenContract = new Contract(origin.contractAddress, ERC20_ABI, provider);
+            rawBalance = await tokenContract.balanceOf(account);
+          } else {
+            rawBalance = await provider.getBalance(account);
+          }
+          rawBalance = rawBalance.toString();
+        }
+        if (!cancelled) setOriginBalance(formatUnits(rawBalance, Number(origin.decimals || 0)));
+      } catch (error) {
+        if (!cancelled) setBalanceError(error?.message || 'Balance could not be loaded.');
+      } finally {
+        if (!cancelled) setBalanceLoading(false);
+      }
+    }
+    loadSelectedAssetBalance();
+    return () => { cancelled = true; };
+  }, [origin, wallet, nearWallet]);
+
   const destinationIsNear = destinationChain === 'near' || isNearToken(destinationTokens.find(t => t.assetId === destinationAsset) || {});
   const recipientPlaceholder = destinationIsNear ? 'e.g. merchant.near' : 'e.g. 0xAbC123...7890';
 
@@ -361,7 +432,7 @@ export default function App() {
           <option value="">{!originChain ? 'Choose a network first' : 'Select available token'}</option>
           {originTokens.map(t => <option key={t.assetId} value={t.assetId}>{t.symbol || 'TOKEN'}{t.name ? ' · ' + t.name : ''}</option>)}
         </select>
-        <label>Amount</label><input type="number" min="0" step="any" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" required />
+        <label>Amount</label><input type="number" min="0" step="any" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" required />{origin && <p className="balance-line">{balanceLoading ? 'Checking wallet balance…' : originBalance !== '' ? <>Wallet balance: <strong>{Number(originBalance).toLocaleString(undefined, { maximumFractionDigits: 8 })} {origin.symbol}</strong></> : balanceError}</p>}
         <div className="section-rule"><span>MERCHANT RECEIVES</span></div>
         <label>Choose payout network</label>
         <select value={destinationChain} onChange={e => { setDestinationChain(e.target.value); setDestinationAsset(''); }} required>
