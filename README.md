@@ -6,7 +6,6 @@ IntentPay is a NEAR Intents / 1Click cross-chain checkout prototype. A customer 
 
 - React + Vite checkout interface
 - Live 1Click token registry (cached server-side for five minutes)
-- Safe demo mode that simulates a checkout without calling 1Click or moving funds
 - Merchant payout asset and recipient selection
 - Server-side validation that both asset IDs exist in the live registry
 - 1Click committed quote request with a unique deposit address
@@ -45,24 +44,15 @@ Set `ONECLICK_JWT` in `.env` before requesting a quote. Keep the JWT server-side
 
 The Vite frontend runs on port 5173 and proxies `/api` requests to Express on port 3001.
 
-## Demo mode
-
-The interface opens in Demo mode by default. It uses the live token list for the selectors but creates an illustrative quote locally; the displayed simulation never creates a real deposit address, signs a wallet transaction, or transfers funds. Use this mode for UI walkthroughs and hackathon demos.
-
-Live payment mode is disabled until the server has a valid 1Click JWT configured.
-
 ## 1Click setup
 
 Request a 1Click API key through the [NEAR Intents Partners Portal](https://partners.near-intents.org/). Add it to the server environment as `ONECLICK_JWT`.
 
-The official 1Click service is mainnet. Quotes create real deposit addresses and sending a transaction moves real assets. Do not test with funds you cannot afford to lose. Start with a very small amount and verify the recipient, token, chain, quote expiry, and deposit address in the wallet before signing.
-
-A community-built 1Click-compatible sandbox called Tidepool has been announced, but it is not the official 1Click service. Do not treat it as production infrastructure without independently checking its current availability and trust assumptions.
+IntentPay is pinned to the official NEAR Intents 1Click mainnet endpoint. NEAR Wallet Selector is configured for NEAR mainnet, and EVM deposits use the corresponding EVM mainnets. The app has no testnet or simulated-payment checkout mode. Quotes create real deposit addresses and sending a transaction moves real assets. Before enabling customer payments, test with a tiny amount you can afford to lose and independently verify the token, chain, amount, recipient, quote expiry, and deposit address.
 
 ## Environment variables
 
 - `ONECLICK_JWT`: server-only 1Click authentication token
-- `ONECLICK_BASE_URL`: optional API base override; defaults to `https://1click.chaindefuser.com/v0`
 - `APP_ORIGIN`: optional comma-separated allowed browser origins
 - `PORT`: Express port (defaults to `3001`)
 
