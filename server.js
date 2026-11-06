@@ -200,7 +200,7 @@ app.post('/api/invoices', async (req, res) => {
     const tokens = await getTokens();
     const destination = getToken(tokens, destinationAsset);
     if (!destination) return res.status(400).json({ error: 'Choose a payout asset from the live NEAR Intents registry.' });
-    if (typeof amount !== 'string' || !/^\\d+(\\.\\d+)?$/.test(amount) || Number(amount) <= 0) {
+    if (typeof amount !== 'string' || !/^\d+(\.\d+)?$/.test(amount) || Number(amount) <= 0) {
       return res.status(400).json({ error: 'Invoice amount must be a positive decimal string.' });
     }
     const decimals = Number(destination.decimals);
