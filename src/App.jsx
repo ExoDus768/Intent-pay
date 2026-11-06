@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { BrowserProvider, Contract, formatUnits, isAddress, parseUnits } from 'ethers';
-import { setupWalletSelector } from '@near-wallet-selector/core';
+import { actionCreators, setupWalletSelector } from '@near-wallet-selector/core';
 import { setupModal } from '@near-wallet-selector/modal-ui';
 import { setupMyNearWallet } from '@near-wallet-selector/my-near-wallet';
 import '@near-wallet-selector/modal-ui/styles.css';
@@ -152,13 +152,13 @@ export default function App() {
         let transactions;
         if (tokenContract === 'wrap.near' || origin.symbol === 'NEAR') {
           transactions = [{ receiverId: 'wrap.near', actions: [
-            { type: 'FunctionCall', params: { methodName: 'near_deposit', args: {}, gas: '30000000000000', deposit: amountIn } },
-            { type: 'FunctionCall', params: { methodName: 'ft_transfer', args: { receiver_id: depositAddress, amount: amountIn }, gas: '50000000000000', deposit: '1' } }
+            actionCreators.functionCall('near_deposit', {}, 30000000000000n, BigInt(amountIn)),
+            actionCreators.functionCall('ft_transfer', { receiver_id: depositAddress, amount: amountIn }, 50000000000000n, 1n)
           ] }];
         } else {
-          transactions = [{ receiverId: tokenContract, actions: [{ type: 'FunctionCall', params: {
-            methodName: 'ft_transfer', args: { receiver_id: depositAddress, amount: amountIn }, gas: '50000000000000', deposit: '1'
-          } }] }];
+          transactions = [{ receiverId: tokenContract, actions: [actionCreators.functionCall(
+            'ft_transfer', { receiver_id: depositAddress, amount: amountIn }, 50000000000000n, 1n
+          )] }];
         }
         const result = await walletClient.signAndSendTransactions({ transactions });
         const hash = result?.[0]?.transaction?.hash || result?.[0]?.transaction_outcome?.id || result?.transaction?.hash;
