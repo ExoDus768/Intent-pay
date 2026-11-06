@@ -36,6 +36,7 @@ export default function App() {
   const [nearModal, setNearModal] = useState(null);
   const [walletAction, setWalletAction] = useState('');
   const [walletMenuOpen, setWalletMenuOpen] = useState(false);
+  const [walletFeedback, setWalletFeedback] = useState('Choose a wallet to connect.');
   const [siteMenuOpen, setSiteMenuOpen] = useState(false);
   const [followMenuOpen, setFollowMenuOpen] = useState(false);
   const [invoice, setInvoice] = useState(null);
@@ -238,30 +239,38 @@ export default function App() {
 
   async function connectNearWallet() {
     setWalletAction('near');
+    setWalletFeedback('Opening the NEAR wallet selector…');
     try {
       if (!nearSelector || !nearModal) {
+        setWalletFeedback('NEAR wallet is still initializing. Wait a moment and try again.');
         setNotice('NEAR wallet options are still initializing. Wait a moment and tap Connect NEAR again.');
         return;
       }
       nearModal.show();
+      setWalletFeedback('NEAR wallet selector opened. Choose a wallet and approve the connection.');
       setNotice('Choose a NEAR wallet in the wallet window to connect your mainnet account.');
     } catch (error) {
+      setWalletFeedback('NEAR connection error: ' + (error?.message || 'Unknown error'));
       setNotice('Could not open the NEAR wallet window: ' + (error?.message || 'Unknown error') + '. Try refreshing the page.');
     } finally { setWalletAction(''); }
   }
 
   async function connectWallet() {
     setWalletAction('evm');
+    setWalletFeedback('Looking for an EVM wallet…');
     try {
       // Ask injected wallets to announce through EIP-6963 (Zerion supports this standard).
       window.dispatchEvent(new Event('eip6963:requestProvider'));
-      await new Promise(resolve => setTimeout(resolve, 250));
+      await new Promise(resolve => setTimeout(resolve, 1000));
       const announced = evmProvidersRef.current;
+      const injected = window.ethereum;
+      const injectedProviders = Array.isArray(injected?.providers) ? injected.providers : [];
       const zerion = announced.find(item => /zerion/i.test((item.info?.name || '') + ' ' + (item.info?.rdns || '')));
-      const selected = zerion?.provider || announced[0]?.provider || window.ethereum;
+      const zerionInjected = injectedProviders.find(provider => /zerion/i.test(provider?.providerInfo?.name || provider?.name || provider?.isZerion ? 'zerion' : ''));
+      const selected = zerion?.provider || zerionInjected || announced[0]?.provider || injectedProviders[0] || injected;
       if (!selected) {
         const mobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-        throw new Error(mobile ? 'No injected EVM provider was detected. Open this page in Zerion’s in-app browser and allow the wallet connection request.' : 'No injected EVM wallet was detected.');
+        throw new Error(mobile ? 'Chrome does not inject a wallet here. Open IntentPay from inside Zerion using its in-app browser, or configure WalletConnect to connect from Chrome.' : 'No injected EVM wallet was detected. Install or unlock an EVM wallet, or use WalletConnect.');
       }
       activeEvmProviderRef.current = selected;
       const provider = new BrowserProvider(selected);
@@ -269,21 +278,25 @@ export default function App() {
       if (!accounts?.length) throw new Error('The wallet did not return an account. Approve the connection request in Zerion.');
       const signer = await provider.getSigner();
       setWallet(await signer.getAddress());
+      setWalletFeedback('Wallet connected successfully.');
       const walletName = zerion?.provider === selected ? 'Zerion' : (announced.find(item => item.provider === selected)?.info?.name || 'EVM');
       setNotice(walletName + ' wallet connected. Your connected address will be used as the refund address.');
       selected.on?.('accountsChanged', next => setWallet(next?.[0] || ''));
       selected.on?.('chainChanged', () => setQuote(null));
     } catch (error) {
-      setNotice(error?.code === 4001 ? 'Connection was rejected in your wallet. Tap Connect EVM and approve the request.' : 'EVM wallet connection failed: ' + (error?.message || 'Unknown wallet error'));
+      const message = error?.code === 4001 ? 'Connection was rejected in your wallet. Approve the request to continue.' : (error?.message || 'Unknown wallet error');
+      setWalletFeedback('EVM connection failed: ' + message);
+      setNotice('EVM wallet connection failed: ' + message);
     } finally { setWalletAction(''); }
   }
 
 
   async function connectWalletConnect() {
     setWalletAction('walletconnect');
+    setWalletFeedback('Starting WalletConnect…');
     try {
       const projectId = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID;
-      if (!projectId) throw new Error('WalletConnect is not configured yet. Add VITE_WALLETCONNECT_PROJECT_ID in Vercel and redeploy.');
+      if (!projectId) throw new Error('WalletConnect is not configured yet. A Reown project ID must be added as VITE_WALLETCONNECT_PROJECT_ID in Vercel before this option can connect.');
       let wc = walletConnectProviderRef.current;
       if (!wc) {
         wc = await EthereumProvider.init({
@@ -305,10 +318,12 @@ export default function App() {
       const accounts = await provider.send('eth_requestAccounts', []);
       if (!accounts?.length) throw new Error('WalletConnect did not return an EVM account.');
       setWallet(await (await provider.getSigner()).getAddress());
+      setWalletFeedback('WalletConnect wallet connected successfully.');
       setNotice('WalletConnect wallet connected. Your address will be used for refunds.');
       wc.on('accountsChanged', next => setWallet(next?.[0] || ''));
       wc.on('chainChanged', () => setQuote(null));
     } catch (error) {
+      setWalletFeedback('WalletConnect failed: ' + (error?.message || 'Unknown error'));
       setNotice('WalletConnect failed: ' + (error?.message || 'Unknown error'));
     } finally { setWalletAction(''); }
   }
@@ -516,7 +531,7 @@ export default function App() {
   }
 
   return <main className="shell">
-    <nav className="nav"><div className="site-menu-wrap" ref={siteMenuWrapRef}><button type="button" className="hamburger-btn" aria-label="Open navigation menu" aria-expanded={siteMenuOpen} onClick={() => setSiteMenuOpen(open => !open)}><span></span><span></span><span></span></button>{siteMenuOpen && <div className="site-menu"><a href="#how-it-works" onClick={() => setSiteMenuOpen(false)}>How it works</a><a href="#checkout" onClick={() => setSiteMenuOpen(false)}>Supported networks</a><a href="https://github.com/ExoDus768/Intent-pay#readme" target="_blank" rel="noreferrer" onClick={() => setSiteMenuOpen(false)}>Documentation <span>↗</span></a><a href="https://github.com/ExoDus768/Intent-pay" target="_blank" rel="noreferrer" onClick={() => setSiteMenuOpen(false)}>GitHub repository <span>↗</span></a><div className="follow-menu-wrap"><button type="button" className="follow-menu-trigger" aria-expanded={followMenuOpen} aria-haspopup="true" onClick={() => setFollowMenuOpen(open => !open)}>Follow Us <span>{followMenuOpen ? '⌃' : '›'}</span></button>{followMenuOpen && <div className="follow-submenu"><div className="follow-submenu-title">Follow IntentPay</div><div className="follow-link-placeholder"><strong>X (Twitter)</strong><small>Profile link coming soon</small></div></div>}</div></div>}</div><a className="brand" href="#"><span className="brand-mark">I</span> IntentPay</a><div className="nav-right"><span className="status"><i />{health}</span><MerchantTools tokens={tokens} defaultRecipient={wallet || nearWallet} /><div className="wallet-menu-wrap" ref={walletMenuWrapRef}><button type="button" className="wallet-btn" onClick={() => setWalletMenuOpen(open => !open)} disabled={!!walletAction}>{walletAction === 'evm' ? 'Connecting EVM…' : walletAction === 'near' ? 'Opening NEAR…' : walletAction === 'walletconnect' ? 'Connecting…' : wallet || nearWallet ? short(wallet || nearWallet) : 'Connect Wallet'} <span aria-hidden="true">⌄</span></button>{walletMenuOpen && <div className="wallet-menu"><button type="button" onClick={() => { setWalletMenuOpen(false); connectWallet(); }} disabled={walletAction === 'evm'}><strong>EVM Wallet</strong><small>MetaMask, Zerion and other EVM wallets</small>{wallet && <small>Connected: {short(wallet)}</small>}</button><button type="button" onClick={() => { setWalletMenuOpen(false); connectNearWallet(); }} disabled={walletAction === 'near'}><strong>NEAR Wallet</strong><small>MyNearWallet and supported NEAR wallets</small>{nearWallet && <small>Connected: {short(nearWallet)}</small>}</button><button type="button" onClick={() => { setWalletMenuOpen(false); connectWalletConnect(); }} disabled={walletAction === 'walletconnect'}><strong>WalletConnect</strong><small>Scan a QR code or open a compatible mobile wallet</small></button></div>}</div></div></nav>
+    <nav className="nav"><div className="site-menu-wrap" ref={siteMenuWrapRef}><button type="button" className="hamburger-btn" aria-label="Open navigation menu" aria-expanded={siteMenuOpen} onClick={() => setSiteMenuOpen(open => !open)}><span></span><span></span><span></span></button>{siteMenuOpen && <div className="site-menu"><a href="#how-it-works" onClick={() => setSiteMenuOpen(false)}>How it works</a><a href="#checkout" onClick={() => setSiteMenuOpen(false)}>Supported networks</a><a href="https://github.com/ExoDus768/Intent-pay#readme" target="_blank" rel="noreferrer" onClick={() => setSiteMenuOpen(false)}>Documentation <span>↗</span></a><a href="https://github.com/ExoDus768/Intent-pay" target="_blank" rel="noreferrer" onClick={() => setSiteMenuOpen(false)}>GitHub repository <span>↗</span></a><div className="follow-menu-wrap"><button type="button" className="follow-menu-trigger" aria-expanded={followMenuOpen} aria-haspopup="true" onClick={() => setFollowMenuOpen(open => !open)}>Follow Us <span>{followMenuOpen ? '⌃' : '›'}</span></button>{followMenuOpen && <div className="follow-submenu"><div className="follow-submenu-title">Follow IntentPay</div><div className="follow-link-placeholder"><strong>X (Twitter)</strong><small>Profile link coming soon</small></div></div>}</div></div>}</div><a className="brand" href="#"><span className="brand-mark">I</span> IntentPay</a><div className="nav-right"><span className="status"><i />{health}</span><MerchantTools tokens={tokens} defaultRecipient={wallet || nearWallet} /><div className="wallet-menu-wrap" ref={walletMenuWrapRef}><button type="button" className="wallet-btn" onClick={() => setWalletMenuOpen(open => !open)} disabled={!!walletAction}>{walletAction === 'evm' ? 'Connecting EVM…' : walletAction === 'near' ? 'Opening NEAR…' : walletAction === 'walletconnect' ? 'Connecting…' : wallet || nearWallet ? short(wallet || nearWallet) : 'Connect Wallet'} <span aria-hidden="true">⌄</span></button>{walletMenuOpen && <div className="wallet-menu"><button type="button" onClick={() => { setWalletFeedback('Starting EVM connection…'); connectWallet(); }} disabled={walletAction === 'evm'}><strong>EVM Wallet</strong><small>MetaMask, Zerion and other EVM wallets</small>{wallet && <small>Connected: {short(wallet)}</small>}</button><button type="button" onClick={() => { setWalletFeedback('Starting NEAR connection…'); connectNearWallet(); }} disabled={walletAction === 'near'}><strong>NEAR Wallet</strong><small>MyNearWallet and supported NEAR wallets</small>{nearWallet && <small>Connected: {short(nearWallet)}</small>}</button><button type="button" onClick={() => { setWalletFeedback('Starting WalletConnect…'); connectWalletConnect(); }} disabled={walletAction === 'walletconnect'}><strong>WalletConnect</strong><small>Scan a QR code or open a compatible mobile wallet</small></button><div className="wallet-menu-feedback" role="status" aria-live="polite">{walletFeedback}</div></div>}</div></div></nav>
     <section className="hero" id="how-it-works"><div className="eyebrow">CROSS-CHAIN CHECKOUT · POWERED BY NEAR INTENTS</div><h1>One checkout.<br/><span>Any supported chain.</span></h1><p>Customers pay from a supported network. Merchants receive their selected asset at their payout address.</p></section>
     <section className="checkout" id="checkout">{invoice && <div className="invoice-banner"><span className="eyebrow">PAYMENT INVOICE</span><strong>{invoice.amount} {invoice.symbol}</strong><p>{invoice.description || 'Merchant payment'} · Exact amount delivered to the merchant through NEAR Intents.</p></div>}{invoiceLoading && <p className="notice">Loading invoice details…</p>}
       <div className="checkout-head"><div><div className="eyebrow">MAINNET MERCHANT CHECKOUT</div><h2>Configure payment</h2></div><span className="mainnet-pill">MAINNET</span></div>
