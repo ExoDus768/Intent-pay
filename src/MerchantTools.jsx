@@ -90,6 +90,25 @@ export default function MerchantTools({ tokens = [], defaultRecipient = '' }) {
     finally { setBusy(false); }
   }
 
+  async function enableNotifications() {
+    if (!('Notification' in window)) { setError('This browser does not support desktop notifications.'); return; }
+    const permission = await Notification.requestPermission();
+    setNotice(permission === 'granted' ? 'Payment notifications enabled for this browser.' : 'Notification permission was not granted.');
+  }
+
+  async function retryWebhook(id) {
+    setBusy(true);
+    setError('');
+    try {
+      const response = await fetch('/api/invoices/' + encodeURIComponent(id) + '/webhook/retry', { method: 'POST' });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Webhook retry failed.');
+      await refreshInvoices();
+      setNotice(data.webhookDelivered ? 'Webhook delivered successfully.' : 'Webhook retry attempted. Check the delivery status.');
+    } catch (e) { setError(e.message || 'Webhook retry failed.'); }
+    finally { setBusy(false); }
+  }
+
   async function copy(value, label) {
     try { await navigator.clipboard.writeText(value); setNotice(label + ' copied.'); }
     catch { setError('Clipboard access was blocked. Select and copy the value manually.'); }
@@ -142,6 +161,8 @@ export default function MerchantTools({ tokens = [], defaultRecipient = '' }) {
         </form>}
         {tab === 'dashboard' && <div className="merchant-dashboard">
           <div className="dashboard-summary"><div><span>Invoices saved on this device</span><strong>{invoices.length}</strong></div><button type="button" className="secondary refresh-invoices" onClick={refreshInvoices} disabled={busy}>{busy ? 'Refreshing…' : 'Refresh'}</button></div>
+          <div className="dashboard-metrics"><div><span>Paid</span><strong>{invoices.filter(item => item.status === 'SUCCESS').length}</strong></div><div><span>Pending</span><strong>{invoices.filter(item => ['CREATED','PENDING_DEPOSIT','KNOWN_DEPOSIT_TX','PROCESSING'].includes(item.status)).length}</strong></div><div><span>Failed / refunded</span><strong>{invoices.filter(item => ['FAILED','REFUNDED','INCOMPLETE_DEPOSIT'].includes(item.status)).length}</strong></div></div>
+          <button type="button" className="secondary notification-enable" onClick={enableNotifications}>Enable payment notifications</button>
           <p className="merchant-hint">Invoice records and payment status are stored server-side. This browser keeps the invoice IDs for your dashboard list; save or share links if you use another device.</p>
           {error && <p className="merchant-error">{error}</p>}
           {invoices.length === 0 ? <p className="empty-invoices">No invoices found yet. Create your first payment link.</p> : invoices.map(invoice => <article className="invoice-row" key={invoice.id}>
@@ -149,7 +170,7 @@ export default function MerchantTools({ tokens = [], defaultRecipient = '' }) {
             <p>{invoice.description || 'Payment invoice'} · {chainLabel(invoice.destinationChain)}</p>
             <small>{new Date(invoice.createdAt).toLocaleString()}</small>
             <div className="invoice-row-actions"><button type="button" className="secondary" onClick={() => copy(new URL('/?invoice=' + encodeURIComponent(invoice.id), window.location.origin).toString(), 'Payment link')}>Copy link</button><button type="button" className="secondary" onClick={() => window.open('/?invoice=' + encodeURIComponent(invoice.id), '_blank', 'noopener,noreferrer')}>Open</button></div>
-            {invoice.webhookConfigured && <small>Webhook: {invoice.webhookDelivered ? 'Delivered' : invoice.webhookLastError ? 'Delivery failed' : 'Waiting for successful payment'}</small>}
+            {invoice.webhookConfigured && <><small>Webhook: {invoice.webhookDelivered ? 'Delivered' : invoice.webhookLastError ? 'Delivery failed: ' + invoice.webhookLastError : 'Waiting for successful payment'}</small>{invoice.status === 'SUCCESS' && invoice.webhookLastError && <button type="button" className="secondary" onClick={() => retryWebhook(invoice.id)} disabled={busy}>Retry webhook</button>}</>}
           </article>)}
         </div>}
         <div className="merchant-modal-foot">Powered by NEAR Intents · Mainnet payments only · Never ask customers to send funds outside the generated 1Click deposit address.</div>
