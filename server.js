@@ -197,6 +197,11 @@ function validateQuoteBody(body, tokens) {
 app.post('/api/invoices', async (req, res) => {
   try {
     const { destinationAsset, amount, recipient, description = '', webhookUrl = '' } = req.body || {};
+    const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown').split(',')[0].trim().slice(0, 64);
+    const rateKey = 'intentpay:invoice-rate:' + ip;
+    const rateCount = Number(await redisCommand(['INCR', rateKey]));
+    if (rateCount === 1) await redisCommand(['EXPIRE', rateKey, 3600]);
+    if (rateCount > 15) return res.status(429).json({ error: 'Invoice creation limit reached. Try again in an hour.' });
     const tokens = await getTokens();
     const destination = getToken(tokens, destinationAsset);
     if (!destination) return res.status(400).json({ error: 'Choose a payout asset from the live NEAR Intents registry.' });
@@ -249,6 +254,7 @@ app.get('/api/health', (_req, res) => res.json({ ok: true, service: 'intentpay-a
 
 app.get('/api/config', (_req, res) => res.json({
   oneClickConfigured: Boolean(process.env.ONECLICK_JWT),
+  storageConfigured: Boolean(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN),
   provider: '1Click mainnet', network: 'mainnet'
 }));
 
