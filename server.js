@@ -301,7 +301,7 @@ app.get('/api/route-check', async (_req, res) => {
             refundTo: '0x000000000000000000000000000000000000dEaD',
             depositType: 'ORIGIN_CHAIN', recipientType: 'DESTINATION_CHAIN',
             refundType: 'ORIGIN_CHAIN', slippageTolerance: 100,
-            quoteWaitingTimeMs: 0, referral: 'intentpay-route-check'
+            quoteWaitingTimeMs: 0, deadline: new Date(Date.now() + 10 * 60 * 1000).toISOString(), referral: 'intentpay-route-check'
           }) });
           outcome.tested.push({ inputUsd: usd, status: 'QUOTE_OK', amountInUsd: data?.quote?.amountInUsd, amountOutUsd: data?.quote?.amountOutUsd, amountOutFormatted: data?.quote?.amountOutFormatted });
           outcome.result = 'LOWEST_SUCCESSFUL_TEST';
