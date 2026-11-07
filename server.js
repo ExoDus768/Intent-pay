@@ -270,56 +270,6 @@ app.get('/api/tokens', async (_req, res) => {
 });
 
 
-/* Temporary read-only route diagnostics. Remove after the live route check. */
-app.get('/api/route-check', async (_req, res) => {
-  try {
-    const tokens = await getTokens();
-    const sources = [
-      ['Ethereum', 'USDT', 'nep141:eth-0xdac17f958d2ee523a2206206994597c13d831ec7.omft.near'],
-      ['BSC', 'USDT', 'nep245:v2_1.omni.hot.tg:56_2CMMyVTGZkeyNZTSvS5sarzfir6g'],
-      ['Base', 'USDC', 'nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near'],
-      ['Arbitrum', 'USDC', 'nep141:arb-0xaf88d065e77c8cc2239327c5edb3a432268e5831.omft.near']
-    ];
-    const destination = tokens.find(t => t.assetId === 'nep141:usdt.tether-token.near');
-    if (!destination) return res.status(503).json({ error: 'NEAR USDT destination token is not in the live registry.' });
-    const amountsUsd = [0.01, 1, 10, 100, 1000];
-    const results = [];
-    for (const [chain, symbol, assetId] of sources) {
-      const origin = tokens.find(t => t.assetId === assetId);
-      if (!origin) { results.push({ chain, symbol, result: 'SOURCE_TOKEN_NOT_IN_REGISTRY' }); continue; }
-      const decimals = Number(origin.decimals);
-      if (!Number.isInteger(decimals) || decimals < 6 || decimals > 24) {
-        results.push({ chain, symbol, result: 'UNSUPPORTED_SOURCE_DECIMALS', decimals: origin.decimals });
-        continue;
-      }
-      let outcome = { chain, symbol, result: 'NO_QUOTE_AT_TESTED_AMOUNTS', tested: [] };
-      for (const usd of amountsUsd) {
-        const atomic = (BigInt(Math.round(usd * 1e6)) * (10n ** BigInt(decimals - 6))).toString();
-        try {
-          const data = await oneClick('/quote', { method: 'POST', body: JSON.stringify({
-            dry: true, swapType: 'EXACT_INPUT', originAsset: origin.assetId,
-            destinationAsset: destination.assetId, amount: atomic,
-            recipient: 'wrap.near',
-            refundTo: '0x2527D02599Ba641c19FEa793cD0F167589a0f10D',
-            depositType: 'ORIGIN_CHAIN', recipientType: 'DESTINATION_CHAIN',
-            refundType: 'ORIGIN_CHAIN', slippageTolerance: 100,
-            quoteWaitingTimeMs: 0, deadline: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
-            referral: 'intentpay-route-check'
-          }) });
-          outcome.tested.push({ inputUsd: usd, status: 'QUOTE_OK', amountInUsd: data?.quote?.amountInUsd, amountOutUsd: data?.quote?.amountOutUsd, amountOutFormatted: data?.quote?.amountOutFormatted });
-          outcome.result = 'LOWEST_SUCCESSFUL_TEST';
-          outcome.lowestSuccessfulTestUsd = usd;
-          break;
-        } catch (error) {
-          outcome.tested.push({ inputUsd: usd, status: 'NO_QUOTE', error: error.message });
-        }
-      }
-      results.push(outcome);
-    }
-    res.json({ destination: { chain: 'NEAR', symbol: 'USDT', assetId: destination.assetId }, testedAt: new Date().toISOString(), amountsUsd, results, note: 'Read-only dry quotes; no deposit addresses or funds movement.' });
-  } catch (error) { res.status(error.status || 502).json({ error: error.message }); }
-});
-
 app.post('/api/quote', async (req, res) => {
   try {
     const tokens = await getTokens();
