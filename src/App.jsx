@@ -341,6 +341,20 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
   const originTokenGroups = useMemo(() => [...new Set(filteredOriginTokens.map(tokenChain))], [filteredOriginTokens]);
   const walletDetectedOriginTokens = useMemo(() => originTokens.filter(t => Number(walletTokenBalances[t.assetId] || 0) > 0), [originTokens, walletTokenBalances]);
   const otherOriginTokens = useMemo(() => originTokens.filter(t => !(Number(walletTokenBalances[t.assetId] || 0) > 0)), [originTokens, walletTokenBalances]);
+  useEffect(() => {
+    if (originChain) return undefined;
+    if (nearWallet && !wallet && origins.some(t => tokenChain(t) === 'near')) {
+      setOriginChain('near');
+      return undefined;
+    }
+    if (!wallet || !activeEvmProviderRef.current) return undefined;
+    let cancelled = false;
+    new BrowserProvider(activeEvmProviderRef.current, 'any').getNetwork().then(network => {
+      const matching = origins.find(t => CHAIN_IDS[tokenChain(t)] === Number(network.chainId));
+      if (!cancelled && matching) setOriginChain(tokenChain(matching));
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [originChain, wallet, nearWallet, origins]);
   const destinations = useMemo(() => tokens, [tokens]);
   const destinationChains = useMemo(() => [...new Set(destinations.map(tokenChain))].sort((a, b) => chainLabel(a).localeCompare(chainLabel(b))), [destinations]);
   const destinationTokens = useMemo(() => destinations.filter(t => tokenChain(t) === destinationChain).sort((a, b) => tokenPriority(a) - tokenPriority(b) || String(a.symbol || '').localeCompare(String(b.symbol || ''))), [destinations, destinationChain]);
