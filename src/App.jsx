@@ -48,7 +48,7 @@ function HomePage() {
             <h1>Universal Checkout Widget.<br /><em>One button. Crypto payments across Web3.</em></h1>
             <p>IntentPay is building a universal crypto checkout widget that any merchant or app can add to its website. Create an invoice, embed a Pay with crypto button, and let customers complete payment through a hosted checkout powered by NEAR Intents.</p>
             <div className="landing-actions">
-              <a className="landing-primary" href="/cross-chain">Open merchant workspace <span>↗</span></a>
+              <a className="landing-primary" href="#core-technology">Explore the core technology <span>↓</span></a>
               <a className="landing-secondary" href="/cross-chain">Explore cross-chain payment</a>
             </div>
             <div className="landing-trust"><span className="landing-dot"></span> One integration · Supported wallets and networks · Non-custodial approval</div>
@@ -67,13 +67,13 @@ function HomePage() {
             </div>
           </div>
         </section>
-        <section className="landing-features">
-          <div className="landing-section-heading"><span>THE CORE TECHNOLOGY</span><h2>Universal Checkout Widget</h2><p>Merchants should not need to build a crypto payment system from scratch.</p></div>
-          <article className="landing-feature landing-feature-main"><div className="feature-icon">⌘</div><div><h3>Integrate once. Accept supported crypto payments.</h3><p>Generate an invoice in the merchant workspace, copy the IntentPay embed snippet, and add a Pay with crypto button to any website. Customers are sent to IntentPay's hosted checkout to connect a wallet, review a quote and approve the payment. The invoice status tracks settlement.</p><a href="/cross-chain" className="landing-feature-link">Build with the checkout widget ↗</a></div></article>
+        <section className="landing-features" id="core-technology">
+          <div className="landing-section-heading"><span>01 · CORE TECHNOLOGY</span><h2>Universal Checkout Widget</h2><p>Merchants should not need to build a crypto payment system from scratch.</p></div>
+          <article className="landing-feature landing-feature-main"><div className="feature-icon">⌘</div><div><span className="feature-order">01 · MAIN PRODUCT</span><h3>Integrate once. Accept supported crypto payments.</h3><p>Generate an invoice in the merchant workspace, copy the IntentPay embed snippet, and add a Pay with crypto button to any website. Customers are sent to IntentPay's hosted checkout to connect a wallet, review a quote and approve the payment. The invoice status tracks settlement.</p><a href="/cross-chain" className="landing-feature-link">Build with the checkout widget ↗</a></div></article>
           <div className="landing-feature-grid">
-            <article className="landing-feature"><div className="feature-icon">⇄</div><h3>Cross-chain payment</h3><p>Customers can pay from supported networks and assets while merchants receive their chosen payout asset through NEAR Intents.</p><a href="/cross-chain" className="landing-feature-link">Open swapping page ↗</a></article>
-            <article className="landing-feature"><div className="feature-icon">◎</div><h3>Merchant tools</h3><p>Create invoices, share payment links, and configure your checkout widget from one workspace.</p><a href="/cross-chain" className="landing-feature-link">Open merchant workspace ↗</a></article>
-            <article className="landing-feature landing-feature-social"><div className="feature-icon">𝕏</div><h3>Social Pay</h3><p>A separate social payment feature currently in development.</p><a href="/social-pay" className="landing-feature-link">View Social Pay preview ↗</a></article>
+            <article className="landing-feature"><div className="feature-icon">⇄</div><span className="feature-order">02 · SUPPORTING FEATURE</span><h3>Cross-chain payment</h3><p>Customers can pay from supported networks and assets while merchants receive their chosen payout asset through NEAR Intents.</p><a href="/cross-chain" className="landing-feature-link">Open swapping page ↗</a></article>
+            <article className="landing-feature"><div className="feature-icon">◎</div><span className="feature-order">03 · MERCHANT WORKSPACE</span><h3>Merchant tools</h3><p>Create invoices, share payment links, and configure your checkout widget from one workspace.</p><a href="/cross-chain" className="landing-feature-link">Open merchant workspace ↗</a></article>
+            <article className="landing-feature landing-feature-social"><div className="feature-icon">𝕏</div><span className="feature-order">04 · IN DEVELOPMENT</span><h3>Social Pay</h3><p>A separate social payment feature currently in development.</p><a href="/social-pay" className="landing-feature-link">View Social Pay preview ↗</a></article>
           </div>
         </section>
       </main>
