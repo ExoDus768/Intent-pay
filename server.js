@@ -1,10 +1,9 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, randomBytes, timingSafeEqual, createPublicKey, verify as verifySignature } from 'node:crypto';
 import { verifyMessage } from 'ethers';
 import { get as getBlob, put as putBlob } from '@vercel/blob';
-import { PublicKey } from '@near-js/crypto';
 
 const app = express();
 const PORT = Number(process.env.PORT || 3001);
@@ -150,8 +149,22 @@ function borshString(value) {
   length.writeUInt32LE(bytes.length);
   return Buffer.concat([length, bytes]);
 }
+function decodeBase58(value) {
+  const alphabet = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+  let number = 0n;
+  for (const character of value) {
+    const digit = alphabet.indexOf(character);
+    if (digit < 0) throw new Error('Invalid base58 public key.');
+    number = number * 58n + BigInt(digit);
+  }
+  let hex = number.toString(16);
+  if (hex.length % 2) hex = '0' + hex;
+  const body = number === 0n ? Buffer.alloc(0) : Buffer.from(hex, 'hex');
+  const zeros = value.match(/^1*/)?.[0].length || 0;
+  return Buffer.concat([Buffer.alloc(zeros), body]);
+}
 async function verifyNearHistorySignature({ wallet, message, nonce, signature, publicKey, recipient }) {
-  if (!/^[a-z0-9]+([._-][a-z0-9]+)*$/.test(wallet) || !publicKey || !signature) return false;
+  if (!/^[a-z0-9]+([._-][a-z0-9]+)*$/.test(wallet) || !publicKey || !signature || !publicKey.startsWith('ed25519:')) return false;
   const nonceBytes = Buffer.from(nonce, 'hex');
   if (nonceBytes.length !== 32) return false;
   const tag = Buffer.alloc(4);
@@ -160,7 +173,11 @@ async function verifyNearHistorySignature({ wallet, message, nonce, signature, p
   const digest = createHash('sha256').update(nep413Payload).digest();
   let valid = false;
   try {
-    valid = PublicKey.fromString(publicKey).verify(digest, Buffer.from(signature, 'base64'));
+    const rawKey = decodeBase58(publicKey.slice('ed25519:'.length));
+    if (rawKey.length !== 32) return false;
+    const derKey = Buffer.concat([Buffer.from('302a300506032b6570032100', 'hex'), rawKey]);
+    const keyObject = createPublicKey({ key: derKey, format: 'der', type: 'spki' });
+    valid = verifySignature(null, digest, keyObject, Buffer.from(signature, 'base64'));
   } catch { return false; }
   if (!valid) return false;
   const rpc = await fetch('https://rpc.mainnet.near.org', {
