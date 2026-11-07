@@ -118,7 +118,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
   const [originChain, setOriginChain] = useState('');
   const [originAsset, setOriginAsset] = useState('');
   const [destinationChain, setDestinationChain] = useState('');
-  const [destinationAsset, setDestinationAsset] = useState('');
+  const [destinationAsset, setDestinationAsset] = useState(merchantAssetParam);
   const [amount, setAmount] = useState(merchantAmountParam);
   const [originBalance, setOriginBalance] = useState('');
   const [balanceLoading, setBalanceLoading] = useState(false);
@@ -213,6 +213,19 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
 
   const origin = useMemo(() => tokens.find(t => tokenId(t) === originAsset), [tokens, originAsset]);
   const destination = useMemo(() => tokens.find(t => tokenId(t) === destinationAsset), [tokens, destinationAsset]);
+  // Hosted widget links carry the merchant's payout asset. Resolve its network
+  // from the live registry so the customer checkout displays the merchant's
+  // configured network and token without asking the customer to select them.
+  useEffect(() => {
+    if (!isWidgetCheckout || !tokens.length) return;
+    const payout = tokens.find(t => tokenId(t) === merchantAssetParam);
+    if (!payout) {
+      setNotice('The merchant payout token in this checkout link is not available in the current NEAR Intents token registry.');
+      return;
+    }
+    setDestinationChain(tokenChain(payout));
+    setDestinationAsset(payout.assetId);
+  }, [isWidgetCheckout, merchantAssetParam, tokens]);
   const fixedOutputCheckout = Boolean(isFixedWidgetCheckout);
   const estimateToken = fixedOutputCheckout ? destination : origin;
   const usdEstimate = amount && Number.isFinite(Number(amount)) && Number(amount) > 0 && Number.isFinite(Number(estimateToken?.price)) && Number(estimateToken?.price) > 0
