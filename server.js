@@ -220,6 +220,26 @@ async function readWalletHistory(wallet) {
   const parsed = JSON.parse(raw || '[]');
   return cleanHistoryEntries(parsed);
 }
+function mergeHistoryEntries(...groups) {
+  const byId = new Map();
+  for (const row of groups.flat()) {
+    if (!row?.id) continue;
+    const previous = byId.get(row.id);
+    if (!previous) { byId.set(row.id, row); continue; }
+    const incomingTime = Date.parse(row.updatedAt || row.createdAt || 0);
+    const previousTime = Date.parse(previous.updatedAt || previous.createdAt || 0);
+    const latest = incomingTime >= previousTime ? row : previous;
+    byId.set(row.id, {
+      ...previous,
+      ...latest,
+      createdAt: previous.createdAt || row.createdAt,
+      updatedAt: latest.updatedAt || latest.createdAt
+    });
+  }
+  return [...byId.values()].sort((a, b) =>
+    Date.parse(b.updatedAt || b.createdAt || 0) - Date.parse(a.updatedAt || a.createdAt || 0)
+  ).slice(0, 100);
+}
 async function writeWalletHistory(wallet, entries) {
   const pathname = 'customer-history/' + historyWalletKey(wallet) + '.json';
   await putBlob(pathname, JSON.stringify(cleanHistoryEntries(entries)), {
@@ -277,10 +297,12 @@ app.get('/api/history', async (req, res) => {
 app.put('/api/history', async (req, res) => {
   try {
     const session = requireHistorySession(req);
-    const entries = cleanHistoryEntries(req.body?.entries);
+    const incoming = cleanHistoryEntries(req.body?.entries);
+    const existing = await readWalletHistory(session.wallet);
+    const entries = mergeHistoryEntries(existing, incoming);
     await writeWalletHistory(session.wallet, entries);
     res.set('Cache-Control', 'private, no-store');
-    res.json({ ok: true, count: entries.length });
+    res.json({ ok: true, count: entries.length, entries });
   } catch (error) { res.status(error.status || 500).json({ error: error.message }); }
 });
 
