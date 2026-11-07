@@ -265,20 +265,29 @@ export default function App() {
       const announced = evmProvidersRef.current;
       const injected = window.ethereum;
       const injectedProviders = Array.isArray(injected?.providers) ? injected.providers : [];
-      const isZerion = value => /zerion/i.test(String(
-        value?.providerInfo?.name || value?.name || value?.info?.name || value?.info?.rdns || ''
-      ) + (value?.isZerion ? ' zerion' : ''));
+      const providerName = provider => {
+        const item = announced.find(entry => entry.provider === provider);
+        return String(item?.info?.name || provider?.providerInfo?.name || provider?.name || 'EVM wallet');
+      };
+      const isZerion = provider => /zerion/i.test(providerName(provider) + ' ' + String(
+        announced.find(entry => entry.provider === provider)?.info?.rdns || provider?.info?.rdns || ''
+      ) + (provider?.isZerion ? ' zerion' : ''));
+      // Prefer independently announced EIP-6963 wallets (MetaMask, Trust, Rabby,
+      // Coinbase, etc.) before a legacy injected bridge. Zerion is supported,
+      // but never gets priority merely because it owns window.ethereum.
+      const announcedProviders = announced.map(item => item.provider);
+      const allInjected = [...announcedProviders, ...injectedProviders, ...(injected ? [injected] : [])]
+        .filter((provider, index, all) =>
+          provider && typeof provider.request === 'function' && all.indexOf(provider) === index
+        );
       const candidates = [
-        ...(injected ? [injected] : []),
-        ...injectedProviders.filter(isZerion),
-        ...announced.filter(item => /zerion/i.test((item.info?.name || '') + ' ' + (item.info?.rdns || ''))).map(item => item.provider),
-        ...injectedProviders,
-        ...announced.map(item => item.provider)
-      ].filter((provider, index, all) =>
-        provider && typeof provider.request === 'function' && all.indexOf(provider) === index
-      );
-      if (!candidates.length) throw new Error('No injected EVM wallet was detected. Open this page inside your wallet app browser or configure WalletConnect.');
-
+        ...allInjected.filter(provider => !isZerion(provider)),
+        ...allInjected.filter(isZerion)
+      ];
+      const detectedNames = candidates.map(providerName);
+      if (!candidates.length) {
+        throw new Error('No EVM wallet was detected in this browser. Open IntentPay inside a wallet app or use WalletConnect.');
+      }
       let connected = false;
       let lastError = null;
       for (let index = 0; index < candidates.length; index++) {
