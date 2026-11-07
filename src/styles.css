@@ -126,3 +126,19 @@
 .social-note{margin-top:18px;color:#7787a1;font-size:11px;line-height:1.7}
 .social-footer{text-align:center;color:#71809a;font-size:10px;padding-bottom:28px}
 @media(max-width:560px){.social-main{margin:48px auto 65px}.social-card{padding:17px}.social-main h1{letter-spacing:-1.5px}}
+
+
+/* Universal checkout widget merchant setup */
+.merchant-widget-panel{display:grid;gap:10px}
+.widget-intro h3{font:600 20px 'Space Grotesk';margin:8px 0}
+.widget-intro p{font-size:12px;line-height:1.65;color:#aab4cc;margin:0 0 8px}
+.widget-preview{display:grid;gap:10px;padding:16px;background:#0b1222;border:1px solid #34415d;border-radius:12px}
+.widget-preview-label{font-size:9px;letter-spacing:1.5px;color:#91a0bc;font-weight:700}
+.widget-preview-button{display:flex;justify-content:center;align-items:center;gap:12px;width:100%;padding:14px;border:0;border-radius:10px;background:#a6f36a;color:#101a10;font-weight:700;cursor:pointer}
+.widget-preview-button span{font-size:17px}
+.widget-preview small{font-size:10px;color:#91a0bc;text-align:center}
+.widget-code{white-space:pre-wrap;overflow-wrap:anywhere;padding:14px;margin:0;background:#070b14;border:1px solid #293754;border-radius:9px;color:#c9f6a5;font:11px/1.65 ui-monospace,SFMono-Regular,Consolas,monospace}
+.widget-direct-link{display:grid;gap:8px;padding:10px;background:#0b1222;border:1px solid #34415d;border-radius:9px}
+.widget-direct-link code{font-size:10px;line-height:1.5;overflow-wrap:anywhere;color:#c9f6a5}
+.widget-direct-link .secondary{margin:0}
+@media(min-width:520px){.widget-direct-link{grid-template-columns:minmax(0,1fr) auto;align-items:center}.widget-direct-link .secondary{width:auto;margin:0}}
