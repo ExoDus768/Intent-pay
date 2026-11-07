@@ -103,33 +103,6 @@
 @media(max-width:560px){.landing-shell{padding:16px 17px 0}.landing-nav{height:auto;min-height:54px}.landing-nav-links{gap:12px}.landing-nav-links>a:first-child{display:none}.landing-nav-links a,.landing-nav-links .landing-nav-cta{font-size:10px}.landing-nav-links .landing-nav-cta{padding:8px 10px}.landing-brand{font-size:18px}.landing-hero{padding:58px 0 44px}.landing-copy h1{letter-spacing:-2.7px}.landing-copy>p{font-size:13px}.landing-actions{gap:9px}.landing-primary,.landing-secondary{padding:12px 13px;font-size:11px}.landing-preview{padding:17px}.landing-preview-wrap{min-height:335px}.preview-float{right:-4px;bottom:10px}.landing-x-callout{align-items:flex-start;gap:12px;padding:17px;margin-bottom:55px}.landing-x-callout strong{font-size:13px}.landing-x-callout p{font-size:10px}.landing-x-callout>a{display:none}.landing-feature-grid{grid-template-columns:1fr}.landing-feature{min-height:auto}.landing-features{padding-bottom:55px}.landing-bottom-cta{align-items:flex-start;flex-direction:column;padding:22px}.landing-bottom-cta h2{font-size:23px}.landing-footer{flex-wrap:wrap}.landing-footer>span{order:3;width:100%}}
 
 
-/* Social Pay preview */
-.social-shell{min-height:100vh;background:#080e1b;color:#f4f7ff;padding:22px max(18px,calc((100vw - 1040px)/2))}
-.social-nav{display:flex;align-items:center;justify-content:space-between;padding:8px 0 28px;border-bottom:1px solid #26334b}
-.social-nav a{color:#a6f36a;text-decoration:none;font-size:13px}
-.social-brand{display:flex;align-items:center;gap:9px;color:#f4f7ff!important;font-weight:700;font-size:18px}
-.social-brand-mark{display:grid;place-items:center;width:32px;height:32px;background:#a6f36a;color:#101a10;border-radius:9px;font-weight:800}
-.social-main{max-width:620px;margin:70px auto 90px}
-.social-kicker{color:#a6f36a;font-size:10px;letter-spacing:1.6px;font-weight:700}
-.social-main h1{font:600 clamp(34px,6vw,54px)/1.05 'Space Grotesk';letter-spacing:-2px;margin:14px 0}
-.social-lead{color:#9eabc2;line-height:1.7;font-size:14px;max-width:550px}
-.social-card{margin-top:30px;padding:24px;background:#111a2b;border:1px solid #30405d;border-radius:17px}
-.social-tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:5px;background:#0a1222;border-radius:11px}
-.social-tabs button{border:0;border-radius:8px;padding:12px;background:transparent;color:#9eabc2;font-weight:700;cursor:pointer}
-.social-tabs button.active{background:#a6f36a;color:#101a10}
-.social-form{display:grid;gap:16px;margin-top:22px}
-.social-form label{display:grid;gap:8px;color:#aab7cc;font-size:11px;font-weight:700;letter-spacing:.3px}
-.social-form input{width:100%;box-sizing:border-box;background:#0a1222;border:1px solid #34415d;border-radius:9px;padding:14px;color:#f4f7ff;font:inherit;font-size:14px;outline:none}
-.social-form input:focus{border-color:#a6f36a}
-.social-field-note{color:#7f8da8;font-size:10px;font-weight:400;letter-spacing:0}
-.social-disabled{width:100%;border:0;border-radius:10px;padding:15px;background:#394653;color:#aab7c4;font-weight:800;font-size:13px;cursor:not-allowed}
-.social-guard{display:flex;gap:10px;padding:13px;margin-top:18px;background:#1b2638;border:1px solid #3a4962;border-radius:10px;color:#b6c2d5;font-size:11px;line-height:1.6}
-.social-guard strong{color:#a6f36a}
-.social-note{margin-top:18px;color:#7787a1;font-size:11px;line-height:1.7}
-.social-footer{text-align:center;color:#71809a;font-size:10px;padding-bottom:28px}
-@media(max-width:560px){.social-main{margin:48px auto 65px}.social-card{padding:17px}.social-main h1{letter-spacing:-1.5px}}
-
-
 /* Universal checkout widget merchant setup */
 .merchant-widget-panel{display:grid;gap:10px}
 .widget-intro h3{font:600 20px 'Space Grotesk';margin:8px 0}
