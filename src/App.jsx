@@ -654,7 +654,6 @@ export default function App() {
       <button type="button" className="primary" onClick={() => quote?.quote ? sendDeposit() : createQuote()} disabled={busy || Boolean(txHash) || !configured || invoiceLoading || !origin || !destination || !amount || Number(amount) <= 0 || !recipient.trim() || !(isNearToken(origin) ? nearWallet : wallet)}>
         {busy ? (quote?.quote ? 'Processing payment…' : 'Getting quote…') : txHash ? 'Payment submitted' : quote?.quote ? 'Confirm Pay' : 'Get quote'}
       </button>
-      {txHash && <div className="tx-details">
     </section>
     <footer><span>IntentPay</span><span>Non-custodial cross-chain checkout</span></footer>
   </main>;
