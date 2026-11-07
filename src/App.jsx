@@ -69,7 +69,7 @@ function HomePage() {
         </section>
         <section className="landing-features" id="core-technology">
           <div className="landing-section-heading"><span>01 · CORE TECHNOLOGY</span><h2>Universal Checkout Widget</h2><p>Merchants should not need to build a crypto payment system from scratch.</p></div>
-          <article className="landing-feature landing-feature-main"><div className="feature-icon">⌘</div><div><span className="feature-order">01 · MAIN PRODUCT</span><h3>Integrate once. Accept supported crypto payments.</h3><p>Generate an invoice in the merchant workspace, copy the IntentPay embed snippet, and add a Pay with crypto button to any website. Customers are sent to IntentPay's hosted checkout to connect a wallet, review a quote and approve the payment. The invoice status tracks settlement.</p><a href="/cross-chain" className="landing-feature-link">Build with the checkout widget ↗</a></div></article>
+          <article className="landing-feature landing-feature-main"><div className="feature-icon">⌘</div><div><span className="feature-order">01 · MAIN PRODUCT</span><h3>Integrate once. Accept supported crypto payments.</h3><p>Generate an invoice in the merchant workspace, copy the IntentPay embed snippet, and add a Pay with crypto button to any website. Customers are sent to IntentPay's hosted checkout to connect a wallet, review a quote and approve the payment. The invoice status tracks settlement.</p><a href="/cross-chain?workspace=merchant" className="landing-feature-link">Build with the checkout widget ↗</a></div></article>
           <div className="landing-feature-grid">
             <article className="landing-feature"><div className="feature-icon">⇄</div><span className="feature-order">02 · SUPPORTING FEATURE</span><h3>Cross-chain payment</h3><p>Customers can pay from supported networks and assets while merchants receive their chosen payout asset through NEAR Intents.</p><a href="/cross-chain" className="landing-feature-link">Open swapping page ↗</a></article>
             <article className="landing-feature"><div className="feature-icon">◎</div><span className="feature-order">03 · MERCHANT WORKSPACE</span><h3>Merchant tools</h3><p>Create invoices, share payment links, and configure your checkout widget from one workspace.</p><a href="/cross-chain" className="landing-feature-link">Open merchant workspace ↗</a></article>
@@ -105,7 +105,7 @@ function MerchantApp() {
   const [walletFeedback, setWalletFeedback] = useState('Choose a wallet to connect.');
   const [siteMenuOpen, setSiteMenuOpen] = useState(false);
   const [followMenuOpen, setFollowMenuOpen] = useState(false);
-  const [merchantWorkspaceOpen, setMerchantWorkspaceOpen] = useState(false);
+  const [merchantWorkspaceOpen, setMerchantWorkspaceOpen] = useState(new URLSearchParams(window.location.search).get('workspace') === 'merchant');
   const [invoice, setInvoice] = useState(null);
   const [invoiceLoading, setInvoiceLoading] = useState(Boolean(new URLSearchParams(window.location.search).get('invoice')));
   const [originChain, setOriginChain] = useState('');
