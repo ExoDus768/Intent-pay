@@ -155,3 +155,6 @@
 .landing-secondary-heading{margin-top:10px}
 .landing-feature-social{border-color:rgba(166,243,106,.22)}
 @media(max-width:600px){.landing-feature-main{grid-template-columns:1fr;gap:12px;padding:20px}.landing-feature-main h3{font-size:19px}}
+
+.feature-order{display:block;margin:0 0 8px;color:#a6f36a;font-size:9px;font-weight:800;letter-spacing:1.4px}
+.landing-feature-main .feature-order{margin-bottom:9px}
