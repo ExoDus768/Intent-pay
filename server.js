@@ -1,6 +1,10 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { verifyMessage } from 'ethers';
+import { get as getBlob, put as putBlob } from '@vercel/blob';
+import { PublicKey } from '@near-js/crypto';
 
 const app = express();
 const PORT = Number(process.env.PORT || 3001);
@@ -103,6 +107,165 @@ function validateQuoteBody(body, tokens) {
   return { origin, destination, amount: String(amount), recipient: recipient.trim(), refundTo, nearSenderAccount, isNearOrigin, slippageTolerance, swapType };
 }
 
+
+
+function historySecret() {
+  if (!process.env.INTENTPAY_HISTORY_SECRET) {
+    const error = new Error('Wallet history authentication is not configured.');
+    error.status = 503;
+    throw error;
+  }
+  return process.env.INTENTPAY_HISTORY_SECRET;
+}
+function signHistoryPayload(payload) {
+  const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const signature = createHmac('sha256', historySecret()).update(body).digest('base64url');
+  return body + '.' + signature;
+}
+function readHistoryPayload(token) {
+  const [body, signature] = String(token || '').split('.');
+  if (!body || !signature) return null;
+  const expected = createHmac('sha256', historySecret()).update(body).digest();
+  let actual;
+  try { actual = Buffer.from(signature, 'base64url'); } catch { return null; }
+  if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) return null;
+  try { return JSON.parse(Buffer.from(body, 'base64url').toString('utf8')); } catch { return null; }
+}
+function requireHistorySession(req) {
+  const bearer = String(req.headers.authorization || '').match(/^Bearer (.+)$/i)?.[1];
+  const payload = readHistoryPayload(bearer);
+  if (!payload || payload.type !== 'session' || !payload.wallet || !payload.exp || payload.exp < Date.now()) {
+    const error = new Error('Wallet session expired. Sign the wallet message again.');
+    error.status = 401;
+    throw error;
+  }
+  return payload;
+}
+function historyWalletKey(wallet) {
+  return createHash('sha256').update(String(wallet).trim().toLowerCase()).digest('hex');
+}
+function borshString(value) {
+  const bytes = Buffer.from(value, 'utf8');
+  const length = Buffer.alloc(4);
+  length.writeUInt32LE(bytes.length);
+  return Buffer.concat([length, bytes]);
+}
+async function verifyNearHistorySignature({ wallet, message, nonce, signature, publicKey, recipient }) {
+  if (!/^[a-z0-9]+([._-][a-z0-9]+)*$/.test(wallet) || !publicKey || !signature) return false;
+  const nonceBytes = Buffer.from(nonce, 'hex');
+  if (nonceBytes.length !== 32) return false;
+  const tag = Buffer.alloc(4);
+  tag.writeUInt32LE(2147484061);
+  const nep413Payload = Buffer.concat([tag, borshString(message), nonceBytes, borshString(recipient), Buffer.from([0])]);
+  const digest = createHash('sha256').update(nep413Payload).digest();
+  let valid = false;
+  try {
+    valid = PublicKey.fromString(publicKey).verify(digest, Buffer.from(signature, 'base64'));
+  } catch { return false; }
+  if (!valid) return false;
+  const rpc = await fetch('https://rpc.mainnet.near.org', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 'intentpay-history-auth', method: 'query', params: { request_type: 'view_access_key_list', finality: 'final', account_id: wallet } })
+  });
+  const data = await rpc.json();
+  if (!rpc.ok || data.error) return false;
+  return (data.result?.keys || []).some(item => item.public_key === publicKey);
+}
+function cleanHistoryEntries(entries) {
+  if (!Array.isArray(entries)) {
+    const error = new Error('Transaction history must be an array.');
+    error.status = 400;
+    throw error;
+  }
+  return entries.slice(0, 100).filter(item => item && typeof item.id === 'string' && item.id.length <= 180).map(item => ({
+    id: item.id,
+    merchant: String(item.merchant || 'Merchant payment').slice(0, 100),
+    sourceNetwork: String(item.sourceNetwork || '').slice(0, 60),
+    sourceToken: String(item.sourceToken || '').slice(0, 30),
+    destinationNetwork: String(item.destinationNetwork || '').slice(0, 60),
+    destinationToken: String(item.destinationToken || '').slice(0, 30),
+    amountPaid: String(item.amountPaid || '').slice(0, 80),
+    amountReceived: String(item.amountReceived || '').slice(0, 80),
+    transactionHash: String(item.transactionHash || '').slice(0, 180),
+    depositAddress: String(item.depositAddress || '').slice(0, 180),
+    status: String(item.status || 'PROCESSING').slice(0, 40),
+    fixedAmount: Boolean(item.fixedAmount),
+    createdAt: item.createdAt || new Date().toISOString(),
+    updatedAt: item.updatedAt || new Date().toISOString()
+  }));
+}
+async function readWalletHistory(wallet) {
+  const pathname = 'customer-history/' + historyWalletKey(wallet) + '.json';
+  const blob = await getBlob(pathname, { access: 'private' });
+  if (!blob || blob.statusCode !== 200) return [];
+  const raw = await new Response(blob.stream).text();
+  const parsed = JSON.parse(raw || '[]');
+  return cleanHistoryEntries(parsed);
+}
+async function writeWalletHistory(wallet, entries) {
+  const pathname = 'customer-history/' + historyWalletKey(wallet) + '.json';
+  await putBlob(pathname, JSON.stringify(cleanHistoryEntries(entries)), {
+    access: 'private',
+    contentType: 'application/json',
+    allowOverwrite: true,
+    cacheControlMaxAge: 60
+  });
+}
+app.post('/api/history/challenge', (req, res) => {
+  try {
+    const wallet = String(req.body?.wallet || '').trim();
+    const chain = req.body?.chain === 'near' ? 'near' : 'evm';
+    if (!wallet || wallet.length > 128 || (chain === 'evm' && !isEvmAddress(wallet)) ||
+        (chain === 'near' && !isNearAccount(wallet))) {
+      return res.status(400).json({ error: 'A valid connected wallet address is required.' });
+    }
+    const nonce = randomBytes(32).toString('hex');
+    const recipient = 'intentpay';
+    const message = 'Sign in to IntentPay transaction history\\nWallet: ' + wallet + '\\nNonce: ' + nonce;
+    const challengeToken = signHistoryPayload({ type: 'challenge', wallet, chain, nonce, recipient, message, iat: Date.now() });
+    res.json({ message, nonce, recipient, challengeToken });
+  } catch (error) { res.status(error.status || 500).json({ error: error.message }); }
+});
+app.post('/api/history/verify', async (req, res) => {
+  try {
+    const challenge = readHistoryPayload(req.body?.challengeToken);
+    if (!challenge || challenge.type !== 'challenge' || Date.now() - challenge.iat > 5 * 60 * 1000 ||
+        challenge.iat > Date.now() + 30000) {
+      return res.status(401).json({ error: 'Wallet sign-in request expired. Please try again.' });
+    }
+    let valid = false;
+    if (challenge.chain === 'evm') {
+      try { valid = verifyMessage(challenge.message, String(req.body?.signature || '')).toLowerCase() === challenge.wallet.toLowerCase(); }
+      catch { valid = false; }
+    } else if (challenge.chain === 'near') {
+      valid = await verifyNearHistorySignature({
+        wallet: challenge.wallet, message: challenge.message, nonce: challenge.nonce,
+        recipient: challenge.recipient, signature: req.body?.signature, publicKey: req.body?.publicKey
+      });
+    }
+    if (!valid) return res.status(401).json({ error: 'Wallet signature could not be verified. No history was shared.' });
+    const token = signHistoryPayload({ type: 'session', wallet: challenge.wallet, chain: challenge.chain, exp: Date.now() + 60 * 60 * 1000 });
+    res.json({ token, expiresIn: 3600 });
+  } catch (error) { res.status(error.status || 500).json({ error: error.message }); }
+});
+app.get('/api/history', async (req, res) => {
+  try {
+    const session = requireHistorySession(req);
+    const entries = await readWalletHistory(session.wallet);
+    res.set('Cache-Control', 'private, no-store');
+    res.json({ entries });
+  } catch (error) { res.status(error.status || 500).json({ error: error.message }); }
+});
+app.put('/api/history', async (req, res) => {
+  try {
+    const session = requireHistorySession(req);
+    const entries = cleanHistoryEntries(req.body?.entries);
+    await writeWalletHistory(session.wallet, entries);
+    res.set('Cache-Control', 'private, no-store');
+    res.json({ ok: true, count: entries.length });
+  } catch (error) { res.status(error.status || 500).json({ error: error.message }); }
+});
 
 app.get('/api/health', (_req, res) => res.json({ ok: true, service: 'intentpay-api' }));
 
