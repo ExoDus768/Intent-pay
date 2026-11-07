@@ -9,7 +9,7 @@ Open the **Merchant workspace** from the top-left navigation. Set:
 - **Customer enters amount** for variable payments, or **Fixed amount** for a fixed-price checkout.
 - Optional business/payment name and button label.
 
-Copy the generated embed snippet or hosted checkout link. IntentPay does not include invoice creation, invoice storage, or a merchant invoice dashboard.
+Copy the generated embed snippet or hosted checkout link.
 
 ## Add the button to a website
 
