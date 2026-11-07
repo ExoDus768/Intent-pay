@@ -23,6 +23,7 @@ export default function MerchantTools({ tokens = [], defaultRecipient = '' }) {
   const [history, setHistory] = useState(readHistory);
   const [invoices, setInvoices] = useState([]);
   const [link, setLink] = useState('');
+  const [widgetInvoiceId, setWidgetInvoiceId] = useState('');
   const [qr, setQr] = useState('');
   const [webhookSecret, setWebhookSecret] = useState('');
   const [busy, setBusy] = useState(false);
@@ -51,7 +52,7 @@ export default function MerchantTools({ tokens = [], defaultRecipient = '' }) {
   }
 
   useEffect(() => {
-    if (open && tab === 'dashboard') refreshInvoices();
+    if (open && (tab === 'dashboard' || tab === 'widget')) refreshInvoices();
   }, [open, tab, history.join('|')]);
 
   async function createInvoice(event) {
@@ -84,6 +85,8 @@ export default function MerchantTools({ tokens = [], defaultRecipient = '' }) {
         setWebhookSecret(data.webhookSecret);
       }
       setLink(shareUrl);
+      setWidgetInvoiceId(invoice.id);
+      setInvoices(current => [invoice, ...current.filter(item => item.id !== invoice.id)]);
       setQr(await QRCode.toDataURL(shareUrl, { width: 240, margin: 2, errorCorrectionLevel: 'M' }));
       setNotice('Invoice created. Share the link or QR code with your customer.');
       setTab('create');
@@ -117,6 +120,8 @@ export default function MerchantTools({ tokens = [], defaultRecipient = '' }) {
 
   const selected = tokens.find(t => t.assetId === asset);
   const selectedNear = String(selected?.blockchain || '').toLowerCase() === 'near';
+  const widgetCheckoutUrl = widgetInvoiceId ? window.location.origin + '/?invoice=' + encodeURIComponent(widgetInvoiceId) : '';
+  const widgetSnippet = widgetInvoiceId ? '<button type="button" data-intentpay-checkout data-intentpay-invoice="' + widgetInvoiceId + '">Pay with crypto</button>\n<script src="' + window.location.origin + '/intentpay.js" defer></script>' : '';
 
   return <>
     <button type="button" className="merchant-tools-btn" onClick={() => setOpen(true)}>Merchant tools</button>
@@ -129,6 +134,7 @@ export default function MerchantTools({ tokens = [], defaultRecipient = '' }) {
         <div className="merchant-tabs">
           <button type="button" className={tab === 'create' ? 'active' : ''} onClick={() => setTab('create')}>Create invoice</button>
           <button type="button" className={tab === 'dashboard' ? 'active' : ''} onClick={() => setTab('dashboard')}>Dashboard</button>
+          <button type="button" className={tab === 'widget' ? 'active' : ''} onClick={() => setTab('widget')}>Checkout widget</button>
         </div>
         {tab === 'create' && <form className="merchant-form" onSubmit={createInvoice}>
           <p className="merchant-intro">Create a fixed-output payment link. NEAR Intents will calculate how much the customer must deposit from their chosen supported asset.</p>
@@ -160,6 +166,32 @@ export default function MerchantTools({ tokens = [], defaultRecipient = '' }) {
             {webhookSecret && <div className="webhook-secret"><strong>Webhook signing secret — save this now</strong><code>{webhookSecret}</code><button type="button" className="secondary" onClick={() => copy(webhookSecret, 'Webhook secret')}>Copy webhook secret</button></div>}
           </div>}
         </form>}
+        {tab === 'widget' && <div className="merchant-widget-panel">
+          <div className="widget-intro">
+            <span className="eyebrow">UNIVERSAL CHECKOUT</span>
+            <h3>Add IntentPay to your website</h3>
+            <p>Choose one of your payment invoices, then copy the small code snippet into your store or website. Your customer will open the hosted IntentPay checkout.</p>
+          </div>
+          <label htmlFor="widget-invoice-select">Payment invoice</label>
+          <select id="widget-invoice-select" value={widgetInvoiceId} onChange={event => setWidgetInvoiceId(event.target.value)}>
+            <option value="">Select an invoice</option>
+            {invoices.map(item => <option key={item.id} value={item.id}>{item.description || 'Payment invoice'} · {item.amount} {item.symbol} · {String(item.id).slice(0, 8)}</option>)}
+          </select>
+          {widgetInvoiceId ? <>
+            <div className="widget-preview">
+              <span className="widget-preview-label">BUTTON PREVIEW</span>
+              <button type="button" className="widget-preview-button" onClick={() => window.open(widgetCheckoutUrl, '_blank', 'noopener,noreferrer')}>Pay with crypto <span>↗</span></button>
+              <small>Preview opens the hosted checkout in a new tab. It does not make a payment.</small>
+            </div>
+            <label>Embed code</label>
+            <pre className="widget-code">{widgetSnippet}</pre>
+            <button type="button" className="primary" onClick={() => copy(widgetSnippet, 'Widget embed code')}>Copy embed code</button>
+            <label>Direct checkout link</label>
+            <div className="widget-direct-link"><code>{widgetCheckoutUrl}</code><button type="button" className="secondary" onClick={() => copy(widgetCheckoutUrl, 'Checkout link')}>Copy link</button></div>
+          </> : <p className="empty-invoices">Create a payment invoice first, or open Dashboard to refresh your saved invoices. Then select it here to generate the embed code.</p>}
+          <p className="merchant-hint">The widget button only opens checkout. A payment is complete only after the invoice status confirms SUCCESS. Persistent invoice storage must be enabled for reliable merchant use.</p>
+          {error && <p className="merchant-error">{error}</p>}
+        </div>}
         {tab === 'dashboard' && <div className="merchant-dashboard">
           <div className="dashboard-summary"><div><span>Invoices saved on this device</span><strong>{invoices.length}</strong></div><button type="button" className="secondary refresh-invoices" onClick={refreshInvoices} disabled={busy}>{busy ? 'Refreshing…' : 'Refresh'}</button></div>
           <div className="dashboard-metrics"><div><span>Paid</span><strong>{invoices.filter(item => item.status === 'SUCCESS').length}</strong></div><div><span>Pending</span><strong>{invoices.filter(item => ['CREATED','PENDING_DEPOSIT','KNOWN_DEPOSIT_TX','PROCESSING'].includes(item.status)).length}</strong></div><div><span>Failed / refunded</span><strong>{invoices.filter(item => ['FAILED','REFUNDED','INCOMPLETE_DEPOSIT'].includes(item.status)).length}</strong></div></div>
