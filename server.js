@@ -177,6 +177,23 @@ function validateQuoteBody(body, tokens) {
     error.status = 400;
     throw error;
   }
+  // Enforce a USD-denominated minimum using the live 1Click token price.
+  // EXACT_INPUT can be checked before requesting a quote; EXACT_OUTPUT is
+  // checked against 1Click's authoritative amountInUsd quote field below.
+  if (swapType === 'EXACT_INPUT') {
+    const tokenPrice = Number(origin.price);
+    if (!Number.isFinite(tokenPrice) || tokenPrice <= 0 || !Number.isInteger(Number(origin.decimals)) || Number(origin.decimals) < 0) {
+      const error = new Error('The selected token has no valid live USD price, so the $0.01 minimum cannot be verified. Please choose another asset.');
+      error.status = 400;
+      throw error;
+    }
+    const inputUsd = (Number(amount) / (10 ** Number(origin.decimals))) * tokenPrice;
+    if (!Number.isFinite(inputUsd) || inputUsd < 0.01) {
+      const error = new Error('Minimum swap amount is $0.01 USD equivalent.');
+      error.status = 400;
+      throw error;
+    }
+  }
   const isNearOrigin = String(origin.blockchain || '').toLowerCase() === 'near';
   if (isNearOrigin ? (!isNearAccount(refundTo) || refundTo !== nearSenderAccount) : !isEvmAddress(refundTo)) {
     const error = new Error(isNearOrigin
@@ -299,6 +316,12 @@ app.post('/api/quote', async (req, res) => {
       referral: 'intentpay'
     };
     const data = await oneClick('/quote', { method: 'POST', body: JSON.stringify(request) });
+    const inputUsd = Number(data?.quote?.amountInUsd);
+    if (!Number.isFinite(inputUsd) || inputUsd < 0.01) {
+      return res.status(400).json({ error: Number.isFinite(inputUsd)
+        ? 'Minimum swap amount is $0.01 USD equivalent.'
+        : '1Click did not return a valid USD input estimate, so the $0.01 minimum cannot be verified. Please try again.' });
+    }
     if (!data?.quote?.depositAddress || !data?.quote?.amountIn) {
       return res.status(502).json({ error: '1Click returned an incomplete committed quote. No payment should be sent.' });
     }
