@@ -530,6 +530,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
       const response = await fetch('/api/quote', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          dry: true,
           originAsset: origin.assetId,
           destinationAsset: destination.assetId,
           amount: atomicAmount,
@@ -601,8 +602,37 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
   }, [configured, originAsset, destinationAsset, amount, recipient, wallet, nearWallet, tokens]);
 
   async function sendDeposit() {
-    if (!quote?.quote?.depositAddress || !origin) return;
-    if (Date.parse(quote.quote.deadline) <= Date.now()) {
+    if (!quote?.quote || !origin) return;
+    let activeQuote = quote;
+    if (!activeQuote.quote.depositAddress) {
+      setBusy(true);
+      setNotice('The route preview is valid. Creating a fresh payment address…');
+      try {
+        const committed = await fetch('/api/quote', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            originAsset: origin.assetId,
+            destinationAsset: destination.assetId,
+            amount: parseUnits(amount, Number(fixedOutputCheckout ? destination.decimals : origin.decimals)).toString(),
+            recipient: recipient.trim(),
+            refundTo: isNearToken(origin) ? nearWallet : wallet,
+            nearSenderAccount: isNearToken(origin) ? nearWallet : undefined,
+            swapType: fixedOutputCheckout ? 'EXACT_OUTPUT' : 'EXACT_INPUT',
+            slippageTolerance: 100,
+            dry: false
+          })
+        });
+        const committedData = await committed.json();
+        if (!committed.ok) throw new Error(committedData.error || 'Could not prepare the payment.');
+        activeQuote = committedData;
+        setQuote(committedData);
+      } catch (error) {
+        setBusy(false);
+        setNotice(error.message || 'Could not prepare the payment.');
+        return;
+      }
+    }
+    if (Date.parse(activeQuote.quote.deadline) <= Date.now()) {
       setQuote(null); return setNotice('This quote has expired. Request a new quote before sending funds.');
     }
     const chainKey = tokenChain(origin);
@@ -799,7 +829,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
         {quote.quote.minAmountIn && <div className="quote-row"><span>Minimum input</span><strong>{formatUnits(quote.quote.minAmountIn, Number(origin?.decimals || 0))} {origin?.symbol}</strong></div>}
         {quote.quote.maxAmountIn && <div className="quote-row"><span>Maximum input</span><strong>{formatUnits(quote.quote.maxAmountIn, Number(origin?.decimals || 0))} {origin?.symbol}</strong></div>}
         <div className="quote-row"><span>Estimated time</span><strong>{quote.quote.timeEstimate ? Math.ceil(quote.quote.timeEstimate / 60) + ' min' : 'Provider estimate unavailable'}</strong></div><div className="quote-row"><span>Quote expires</span><strong>{quote.quote.deadline ? new Date(quote.quote.deadline).toLocaleTimeString() : 'Provider-defined'}</strong></div>
-        {<div className="deposit-address"><span>Unique deposit address</span><code>{quote.quote.depositAddress}</code></div>}
+        {quote.quote.depositAddress ? <div className="deposit-address"><span>Unique deposit address</span><code>{quote.quote.depositAddress}</code></div> : <p className="helper-text">Payment address is created securely when you tap Confirm Pay.</p>}
         {quote.quote.depositMemo && <div className="deposit-address"><span>Required memo</span><code>{quote.quote.depositMemo}</code></div>}
         {txHash && <div className="tx-details"><span>Deposit transaction</span><code>{short(txHash)}</code><span>Status: {paymentStatus || 'Waiting'}</span></div>}
         {txHash && <button className="secondary" onClick={refreshStatus} disabled={busy}>Refresh payment status</button>}
