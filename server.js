@@ -342,7 +342,7 @@ app.post('/api/quote', async (req, res) => {
     const inputUsd = Number(data?.quote?.amountInUsd);
     if (!Number.isFinite(inputUsd) || inputUsd < 0.01) {
       return res.status(400).json({ error: Number.isFinite(inputUsd)
-        ? 'Minimum swap amount is $0.01 USD equivalent.'
+        ? 'Minimum payment amount is $0.01 USD equivalent.'
         : '1Click did not return a valid USD input estimate, so the $0.01 minimum cannot be verified. Please try again.' });
     }
     if (!data?.quote?.depositAddress || !data?.quote?.amountIn) {
