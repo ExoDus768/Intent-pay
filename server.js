@@ -222,7 +222,7 @@ app.post('/api/history/challenge', (req, res) => {
     }
     const nonce = randomBytes(32).toString('hex');
     const recipient = 'intentpay';
-    const message = 'Sign in to IntentPay transaction history\\nWallet: ' + wallet + '\\nNonce: ' + nonce;
+    const message = 'Sign in to IntentPay transaction history\nWallet: ' + wallet + '\nNonce: ' + nonce;
     const challengeToken = signHistoryPayload({ type: 'challenge', wallet, chain, nonce, recipient, message, iat: Date.now() });
     res.json({ message, nonce, recipient, challengeToken });
   } catch (error) { res.status(error.status || 500).json({ error: error.message }); }
