@@ -55,7 +55,6 @@
 .merchant-page-card{width:min(720px,100%);max-height:none;overflow:visible;box-shadow:0 24px 90px #0005}
 .merchant-page-shell{max-width:1080px}
 .merchant-page-nav{display:flex;align-items:center;justify-content:space-between;padding:8px 0 20px;border-bottom:1px solid #ffffff12}
-.merchant-back-link{color:#a6f36a;text-decoration:none;font-size:12px;font-weight:700}
 .customer-checkout-shell{max-width:850px}
 .customer-nav{padding-bottom:18px;border-bottom:1px solid #ffffff12}
 .customer-nav .site-menu-wrap{display:none}
