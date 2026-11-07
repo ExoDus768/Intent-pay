@@ -142,3 +142,14 @@
 .widget-direct-link code{font-size:10px;line-height:1.5;overflow-wrap:anywhere;color:#c9f6a5}
 .widget-direct-link .secondary{margin:0}
 @media(min-width:520px){.widget-direct-link{grid-template-columns:minmax(0,1fr) auto;align-items:center}.widget-direct-link .secondary{width:auto;margin:0}}
+
+
+/* Landing page: lead with the universal checkout widget */
+.landing-feature-main{display:grid;grid-template-columns:56px minmax(0,1fr);gap:20px;align-items:start;padding:26px;border:1px solid rgba(166,243,106,.42);background:linear-gradient(120deg,rgba(166,243,106,.09),rgba(18,27,47,.82));border-radius:18px;margin:0 0 42px}
+.landing-feature-main h3{font-size:22px;margin:0 0 10px}
+.landing-feature-main p{max-width:760px;line-height:1.75}
+.landing-feature-link{display:inline-flex;margin-top:8px;color:#b7f58a;font-size:13px;font-weight:700;text-decoration:none}
+.landing-feature-link:hover{text-decoration:underline}
+.landing-secondary-heading{margin-top:10px}
+.landing-feature-social{border-color:rgba(166,243,106,.22)}
+@media(max-width:600px){.landing-feature-main{grid-template-columns:1fr;gap:12px;padding:20px}.landing-feature-main h3{font-size:19px}}
