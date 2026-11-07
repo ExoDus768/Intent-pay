@@ -24,7 +24,7 @@ export default function MerchantTools({ open = false, onClose = () => {}, tokens
     ? /^[a-z0-9]+([._-][a-z0-9]+)*$/.test(recipient.trim())
     : /^0x[a-fA-F0-9]{40}$/.test(recipient.trim());
   const fixedTokenEstimate = selected && Number(selected.price) > 0 && Number(fixedAmount) > 0 ? Number(fixedAmount) / Number(selected.price) : null;
-  const ready = Boolean(selected && addressValid && (mode === 'variable' || (fixedAmount && Number(fixedAmount) > 0)));
+  const ready = Boolean(selected && addressValid && (mode === 'variable' || (fixedAmount && Number(fixedAmount) >= 0.01)));
   const config = useMemo(() => {
     if (!ready) return null;
     const params = new URLSearchParams({
@@ -89,8 +89,8 @@ export default function MerchantTools({ open = false, onClose = () => {}, tokens
             </button>
             <button type="button" className={mode === 'fixed' ? 'active' : ''} aria-pressed={mode === 'fixed'} onClick={() => setMode('fixed')}>
               <span className="widget-mode-check">{mode === 'fixed' ? '✓' : '＄'}</span>
-              <strong>Fixed amount</strong>
-              <small>Set the exact amount to collect</small>
+              <strong>Fixed USD amount</strong>
+              <small>Set a dollar price for checkout</small>
             </button>
           </div>
           {mode === 'fixed' && <><label htmlFor="intentpay-fixed-amount">Fixed price (USD)</label><div className="widget-usd-input"><span>$</span><input id="intentpay-fixed-amount" type="number" min="0.01" step="0.01" value={fixedAmount} onChange={e => setFixedAmount(e.target.value)} placeholder="e.g. 25.00" /></div><p className="merchant-hint">Set the price in US dollars. IntentPay converts it to the merchant payout token at the current listed USD price.</p></>}
