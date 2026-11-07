@@ -1,80 +1,104 @@
 import { useMemo, useState } from 'react';
 
-const INVOICE_ID_PATTERN = /^[a-f0-9]{24,64}$/i;
-
-export default function MerchantTools({ open = false, onClose = () => {} }) {
-  const [invoiceId, setInvoiceId] = useState('');
+export default function MerchantTools({ open = false, onClose = () => {}, tokens = [] }) {
+  const [mode, setMode] = useState('variable');
+  const [merchantName, setMerchantName] = useState('');
+  const [destinationChain, setDestinationChain] = useState('');
+  const [destinationAsset, setDestinationAsset] = useState('');
+  const [recipient, setRecipient] = useState('');
+  const [fixedAmount, setFixedAmount] = useState('');
+  const [buttonLabel, setButtonLabel] = useState('Pay with crypto');
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
 
-  const validInvoiceId = INVOICE_ID_PATTERN.test(invoiceId.trim());
-  const checkoutUrl = useMemo(
-    () => validInvoiceId ? window.location.origin + '/?invoice=' + encodeURIComponent(invoiceId.trim()) : '',
-    [invoiceId, validInvoiceId]
-  );
-  const embedCode = checkoutUrl
-    ? '<button type="button" data-intentpay-checkout data-intentpay-invoice="' + invoiceId.trim() + '">Pay with crypto</button>\\n<script src="' + window.location.origin + '/intentpay.js" defer></script>'
+  const chains = useMemo(() => [...new Set(tokens.map(t => String(t.blockchain || '').toLowerCase()).filter(Boolean))].sort(), [tokens]);
+  const payoutTokens = useMemo(() => tokens.filter(t => String(t.blockchain || '').toLowerCase() === destinationChain), [tokens, destinationChain]);
+  const selected = tokens.find(t => t.assetId === destinationAsset);
+  const addressValid = selected?.blockchain?.toLowerCase() === 'near'
+    ? /^[a-z0-9]+([._-][a-z0-9]+)*$/.test(recipient.trim())
+    : /^0x[a-fA-F0-9]{40}$/.test(recipient.trim());
+  const ready = Boolean(selected && addressValid && (mode === 'variable' || (fixedAmount && Number(fixedAmount) > 0)));
+  const config = useMemo(() => {
+    if (!ready) return null;
+    const params = new URLSearchParams({
+      merchantAsset: destinationAsset,
+      merchantRecipient: recipient.trim(),
+      merchantName: merchantName.trim().slice(0, 80),
+      ...(mode === 'fixed' ? { merchantAmount: fixedAmount } : {})
+    });
+    return window.location.origin + '/?' + params.toString();
+  }, [ready, destinationAsset, recipient, merchantName, mode, fixedAmount]);
+  const embed = config
+    ? '<button type="button" data-intentpay-checkout data-intentpay-url="' + config + '">' + buttonLabel.trim() + '</button>\\n<script src="' + window.location.origin + '/intentpay.js" defer></script>'
     : '';
 
   async function copy(value, label) {
-    try {
-      await navigator.clipboard.writeText(value);
-      setError('');
-      setNotice(label + ' copied.');
-    } catch {
-      setNotice('');
-      setError('Clipboard access was blocked. Select and copy the value manually.');
-    }
+    try { await navigator.clipboard.writeText(value); setError(''); setNotice(label + ' copied.'); }
+    catch { setNotice(''); setError('Clipboard access was blocked. Select and copy the value manually.'); }
   }
 
   if (!open) return null;
-
   return (
     <div className="merchant-overlay" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
       <section className="merchant-modal" role="dialog" aria-modal="true" aria-labelledby="merchant-title">
         <div className="merchant-modal-head">
-          <div><div className="eyebrow">INTENTPAY MERCHANT</div><h2 id="merchant-title">Merchant workspace</h2></div>
-          <button type="button" className="merchant-close" aria-label="Close merchant workspace" onClick={onClose}>×</button>
+          <div><div className="eyebrow">INTENTPAY · UNIVERSAL CHECKOUT</div><h2 id="merchant-title">Checkout workspace</h2></div>
+          <button type="button" className="merchant-close" aria-label="Close checkout workspace" onClick={onClose}>×</button>
         </div>
-
         <div className="merchant-widget-panel">
           <div className="widget-intro">
-            <span className="eyebrow">UNIVERSAL CHECKOUT</span>
-            <h3>Build with the checkout widget</h3>
-            <p>Connect an existing IntentPay invoice to a checkout button on your website. Customers can pay from a supported wallet and network through the hosted NEAR Intents checkout.</p>
+            <span className="eyebrow">PUBLISH YOUR CHECKOUT</span>
+            <h3>Set up your payment button</h3>
+            <p>Configure where payments should arrive, choose whether customers enter an amount or pay a fixed price, then copy the button code into your website.</p>
           </div>
 
-          <label htmlFor="widget-invoice-id">Invoice ID</label>
-          <input
-            id="widget-invoice-id"
-            value={invoiceId}
-            onChange={event => { setInvoiceId(event.target.value.trim()); setNotice(''); setError(''); }}
-            placeholder="Paste an existing invoice ID"
-            autoCapitalize="none"
-            autoCorrect="off"
-            spellCheck={false}
-          />
-          {invoiceId && !validInvoiceId && <p className="merchant-error">Enter a valid invoice ID (24–64 hexadecimal characters).</p>}
+          <label htmlFor="intentpay-merchant-name">Business or payment name <span>(optional)</span></label>
+          <input id="intentpay-merchant-name" value={merchantName} onChange={e => setMerchantName(e.target.value)} placeholder="e.g. Acme Store" maxLength={80} />
 
-          {validInvoiceId && <>
-            <div className="widget-preview">
-              <span className="widget-preview-label">BUTTON PREVIEW</span>
-              <button type="button" className="widget-preview-button" onClick={() => window.open(checkoutUrl, '_blank', 'noopener,noreferrer')}>Pay with crypto <span>↗</span></button>
-              <small>Preview opens the hosted checkout. It does not make a payment.</small>
-            </div>
-            <label>Embed code</label>
-            <pre className="widget-code">{embedCode}</pre>
-            <button type="button" className="primary" onClick={() => copy(embedCode, 'Widget embed code')}>Copy embed code</button>
-            <label>Direct checkout link</label>
-            <div className="widget-direct-link"><code>{checkoutUrl}</code><button type="button" className="secondary" onClick={() => copy(checkoutUrl, 'Checkout link')}>Copy link</button></div>
+          <label>Payment amount</label>
+          <div className="widget-mode-switch">
+            <button type="button" className={mode === 'variable' ? 'active' : ''} onClick={() => setMode('variable')}>Customer enters amount</button>
+            <button type="button" className={mode === 'fixed' ? 'active' : ''} onClick={() => setMode('fixed')}>Fixed amount</button>
+          </div>
+          {mode === 'fixed' && <><label htmlFor="intentpay-fixed-amount">Amount customer must pay</label><input id="intentpay-fixed-amount" type="number" min="0.00000001" step="any" value={fixedAmount} onChange={e => setFixedAmount(e.target.value)} placeholder="e.g. 25.00" /></>}
+
+          <div className="section-rule"><span>MERCHANT RECEIVES</span></div>
+          <label htmlFor="intentpay-payout-chain">Payout network</label>
+          <select id="intentpay-payout-chain" value={destinationChain} onChange={e => { setDestinationChain(e.target.value); setDestinationAsset(''); }}>
+            <option value="">Choose payout network</option>
+            {chains.map(chain => <option key={chain} value={chain}>{chain.toUpperCase()}</option>)}
+          </select>
+          <label htmlFor="intentpay-payout-token">Payout token</label>
+          <select id="intentpay-payout-token" value={destinationAsset} onChange={e => setDestinationAsset(e.target.value)} disabled={!destinationChain}>
+            <option value="">Choose payout token</option>
+            {payoutTokens.map(t => <option key={t.assetId} value={t.assetId}>{t.symbol} · {t.name || t.blockchain}</option>)}
+          </select>
+          <label htmlFor="intentpay-recipient">Your receiving wallet address</label>
+          <input id="intentpay-recipient" value={recipient} onChange={e => setRecipient(e.target.value.trim())} placeholder={selected?.blockchain?.toLowerCase() === 'near' ? 'merchant.near' : '0x…'} autoCapitalize="none" autoCorrect="off" spellCheck={false} />
+          {recipient && selected && !addressValid && <p className="merchant-error">Enter a valid {selected.blockchain?.toLowerCase() === 'near' ? 'NEAR account ID' : 'EVM wallet address'} for this payout network.</p>}
+
+          <label htmlFor="intentpay-button-label">Button text</label>
+          <input id="intentpay-button-label" value={buttonLabel} onChange={e => setButtonLabel(e.target.value)} maxLength={32} placeholder="Pay with crypto" />
+
+          <div className="widget-preview">
+            <span className="widget-preview-label">BUTTON PREVIEW</span>
+            <button type="button" className="widget-preview-button" disabled={!ready || !buttonLabel.trim()} onClick={() => window.open(config, '_blank', 'noopener,noreferrer')}>{buttonLabel || 'Pay with crypto'} <span>↗</span></button>
+            <small>{mode === 'fixed' ? (fixedAmount || '—') + ' ' + (selected?.symbol || '') + ' · fixed-output checkout' : 'Customer chooses the payment amount'} · Preview opens checkout only; it does not pay.</small>
+          </div>
+
+          {ready && <>
+            <label>Website embed code</label>
+            <pre className="widget-code">{embed}</pre>
+            <button type="button" className="primary" onClick={() => copy(embed, 'Embed code')}>Copy embed code</button>
+            <label>Hosted checkout link</label>
+            <div className="widget-direct-link"><code>{config}</code><button type="button" className="secondary" onClick={() => copy(config, 'Checkout link')}>Copy link</button></div>
           </>}
-
-          {!invoiceId && <p className="empty-invoices">Paste an existing invoice ID to generate your checkout button and direct payment link.</p>}
-          <p className="merchant-hint">The widget opens hosted checkout only. A payment is complete only after the invoice status confirms SUCCESS. Keep your invoice ID private if it should not be shared publicly.</p>
+          {!ready && <p className="empty-invoices">Choose a payout network and token, enter your receiving wallet address, and complete the amount settings to generate your widget.</p>}
+          <p className="merchant-hint">The button opens IntentPay's hosted mainnet checkout. Customers connect their own wallet, review the live NEAR Intents quote and network fee, then approve the payment. Your receiving address and payout asset are included in the public checkout link.</p>
           {error && <p className="merchant-error">{error}</p>}
           {notice && <p className="merchant-notice">{notice}</p>}
         </div>
-        <div className="merchant-modal-foot">Powered by NEAR Intents · Mainnet payments only</div>
+        <div className="merchant-modal-foot">Powered by NEAR Intents · Mainnet only</div>
       </section>
     </div>
   );
