@@ -448,13 +448,23 @@ export default function App() {
   }
 
   useEffect(() => {
-    // A changed payment detail invalidates the previous quote. The customer
-    // explicitly requests a fresh quote with the Get quote button.
+    const complete = Boolean(
+      configured && !invoiceLoading && origin && destination && amount && Number(amount) > 0 &&
+      recipient.trim() && (isNearToken(origin) ? nearWallet : wallet)
+    );
+    // Any changed checkout detail invalidates the old quote and requests a fresh one.
     quoteRequestRef.current += 1;
     setQuote(null);
     setGasEstimate(null);
     setTxHash('');
     setSwapStatus('');
+    if (!complete) return undefined;
+
+    const timer = setTimeout(() => { createQuote(); }, 650);
+    return () => {
+      clearTimeout(timer);
+      quoteRequestRef.current += 1;
+    };
   }, [configured, invoiceLoading, invoice?.id, originAsset, destinationAsset, amount, recipient, wallet, nearWallet, tokens]);
 
   async function sendDeposit() {
@@ -651,9 +661,9 @@ export default function App() {
         {txHash && <button className="secondary" onClick={refreshStatus} disabled={busy}>Refresh payment status</button>}
         <p className="fineprint">MAINNET TRANSACTION · This approval transfers real assets. Verify the wallet network, token, amount, merchant address, quote expiry, and deposit address before signing. Never send a different asset to this address.</p>
       </div>}
-      <button type="button" className="primary" onClick={() => quote?.quote ? sendDeposit() : createQuote()} disabled={busy || Boolean(txHash) || !configured || invoiceLoading || !origin || !destination || !amount || Number(amount) <= 0 || !recipient.trim() || !(isNearToken(origin) ? nearWallet : wallet)}>
-        {busy ? (quote?.quote ? 'Processing payment…' : 'Getting quote…') : txHash ? 'Payment submitted' : quote?.quote ? 'Confirm Pay' : 'Get quote'}
-      </button>
+      {quote?.quote && <button type="button" className="primary" onClick={sendDeposit} disabled={busy || Boolean(txHash)}>
+        {busy ? 'Processing payment…' : txHash ? 'Payment submitted' : 'Confirm Pay'}
+      </button>}
     </section>
     <footer><span>IntentPay</span><span>Non-custodial cross-chain checkout</span></footer>
   </main>;
