@@ -2,7 +2,7 @@
 
 See [HACKATHON.md](./HACKATHON.md) for the NEAR Intents hackathon project summary and demo flow.
 
-IntentPay is a NEAR Intents / 1Click cross-chain checkout prototype. A customer selects a supported EVM or NEAR payment asset; the merchant selects a payout asset and destination address.
+IntentPay is a universal crypto checkout built with NEAR Intents and the 1Click API. Merchants configure a payout asset and receiving address; customers pay from supported wallets and assets through one hosted checkout.
 
 ## Current implementation
 
@@ -10,7 +10,7 @@ IntentPay is a NEAR Intents / 1Click cross-chain checkout prototype. A customer 
 - Live 1Click token registry (cached server-side for five minutes)
 - Merchant payout asset and recipient selection
 - Server-side validation that both asset IDs exist in the live registry
-- 1Click committed quote request with a unique deposit address
+- NEAR Intents committed payment quote with a unique deposit address
 - EVM wallet connection and ERC-20 / native-token deposit transaction
 - NEAR Wallet Selector connection and NEP-141 deposits
 - Native NEAR wrapping to wNEAR before sending to a 1Click deposit address
