@@ -39,6 +39,7 @@ function LandingPage() {
         </a>
         <nav className="landing-nav-links">
           <a href="#features">Features</a>
+          <a href="/social-pay">Social Pay</a>
           <a href="https://x.com/Intent_Payy" target="_blank" rel="noreferrer">Our X community ↗</a>
           <a className="landing-nav-cta" href="/merchant">Try it now <span>↗</span></a>
         </nav>
@@ -47,29 +48,29 @@ function LandingPage() {
       <main>
         <section className="landing-hero">
           <div className="landing-copy">
-            <div className="landing-eyebrow"><span></span> CROSS-CHAIN PAYMENTS, MADE SIMPLE</div>
-            <h1>One checkout.<br /><em>More ways to pay.</em></h1>
-            <p>IntentPay helps people pay with supported crypto assets across multiple networks, while merchants receive funds in the asset and chain they choose. No need to make the payment experience feel complicated.</p>
+            <div className="landing-eyebrow"><span></span> UNIVERSAL CHECKOUT · POWERED BY NEAR INTENTS</div>
+            <h1>One button.<br /><em>Every supported way to pay.</em></h1>
+            <p>Bring crypto checkout to any website with the IntentPay Universal Checkout Widget. Merchants create an invoice, add a simple Pay with crypto button, and send customers to a ready-made checkout experience.</p>
             <div className="landing-actions">
               <a className="landing-primary" href="/merchant">Try it now <span>↗</span></a>
               <a className="landing-secondary" href="#features">Explore features</a>
             </div>
-            <div className="landing-trust"><span className="landing-dot"></span> Powered by NEAR Intents · Built for cross-chain checkout</div>
+            <div className="landing-trust"><span className="landing-dot"></span> Embed once · Accept payments across supported networks</div>
           </div>
 
           <div className="landing-preview-wrap">
             <div className="landing-glow"></div>
             <div className="landing-preview">
-              <div className="preview-top"><span className="preview-brand"><b>I</b> intentpay</span><span className="preview-tag">MERCHANT CHECKOUT</span></div>
-              <div className="preview-title">Pay your way.</div>
-              <p className="preview-subtitle">Choose a network and asset that works for you.</p>
+              <div className="preview-top"><span className="preview-brand"><b>I</b> intentpay</span><span className="preview-tag">UNIVERSAL CHECKOUT WIDGET</span></div>
+              <div className="preview-title">One button. Ready to pay.</div>
+              <p className="preview-subtitle">Add this button to your website and let IntentPay handle the checkout.</p>
               <div className="preview-field"><span>PAY FROM</span><strong><i className="preview-coin">◈</i> Select network and token <small>⌄</small></strong></div>
               <div className="preview-field"><span>AMOUNT</span><strong>Enter amount <small>USD estimate shown</small></strong></div>
               <div className="preview-field"><span>MERCHANT RECEIVES</span><strong><i className="preview-coin green">◎</i> Selected payout asset <small>⌄</small></strong></div>
-              <div className="preview-continue">Continue to payment <span>→</span></div>
-              <div className="preview-foot">Secure wallet approval · Live route quote</div>
+              <div className="preview-continue">Pay with crypto <span>→</span></div>
+              <div className="preview-foot">Simple embed · Hosted checkout · Wallet approval</div>
             </div>
-            <div className="preview-float"><span>↗</span><div><b>Cross-chain</b><small>One simple checkout</small></div></div>
+            <div className="preview-float"><span>⌘</span><div><b>Easy to embed</b><small>One button for your website</small></div></div>
           </div>
         </section>
 
@@ -80,21 +81,23 @@ function LandingPage() {
         </section>
 
         <section className="landing-features" id="features">
-          <div className="landing-section-heading"><span>WHAT INTENTPAY BRINGS</span><h2>Payments without the usual friction.</h2><p>A straightforward checkout experience for customers, with practical tools for merchants.</p></div>
+          <div className="landing-section-heading"><span>THE MAIN TECHNOLOGY</span><h2>Universal Checkout Widget.</h2><p>A simple integration that gives websites a crypto payment button without building a checkout from scratch.</p></div>
+          <article className="landing-feature landing-feature-main"><div className="feature-icon">⌘</div><div><h3>One button. A complete checkout.</h3><p>Create a payment invoice in IntentPay, copy the embed code, and place the Pay with crypto button on your website. The button opens IntentPay hosted checkout, where customers can review the payment and connect a supported wallet. Payment completion is confirmed by the invoice status.</p><a href="/merchant" className="landing-feature-link">Set up a checkout widget ↗</a></div></article>
+          <div className="landing-section-heading landing-secondary-heading"><span>MORE WAYS TO USE INTENTPAY</span><h2>Beyond the widget.</h2></div>
           <div className="landing-feature-grid">
-            <article className="landing-feature"><div className="feature-icon">⌘</div><h3>Cross-chain checkout</h3><p>Customers can pay using supported assets from supported networks, with routing handled through NEAR Intents and 1Click.</p></article>
-            <article className="landing-feature"><div className="feature-icon">◎</div><h3>Wallet-first payments</h3><p>Connect a compatible EVM or NEAR wallet and review the quote before approving a payment from your wallet.</p></article>
-            <article className="landing-feature"><div className="feature-icon">↗</div><h3>Live quotes and estimates</h3><p>See the expected receive amount, an approximate USD value and available route details before confirming.</p></article>
-            <article className="landing-feature"><div className="feature-icon">▤</div><h3>Merchant tools</h3><p>Create payment requests and invoices, share checkout links, and keep track of payment activity from the merchant tools.</p></article>
+            <article className="landing-feature"><div className="feature-icon">⇄</div><h3>Cross-chain payments</h3><p>Customers can pay with supported assets from supported networks, while merchants receive their selected payout asset through NEAR Intents and 1Click.</p></article>
+            <article className="landing-feature"><div className="feature-icon">◎</div><h3>Wallet-first checkout</h3><p>Customers connect a compatible EVM or NEAR wallet, review the live quote and approve payment from their own wallet.</p></article>
+            <article className="landing-feature"><div className="feature-icon">↗</div><h3>Merchant invoices and links</h3><p>Create fixed-amount payment requests, share checkout links and use invoice status to track whether a payment has completed.</p></article>
+            <article className="landing-feature landing-feature-social"><div className="feature-icon">𝕏</div><h3>Social Pay</h3><p>A social payment experience in development, designed around sending crypto to a social username for the recipient to claim.</p><a href="/social-pay" className="landing-feature-link">Explore Social Pay preview ↗</a></article>
           </div>
         </section>
 
         <section className="landing-bottom-cta">
-          <div><span>READY TO TAKE A LOOK?</span><h2>See the merchant checkout in action.</h2><p>Open the IntentPay merchant site and explore the payment experience.</p></div>
+          <div><span>ADD CRYPTO CHECKOUT TO YOUR SITE</span><h2>Start with one simple button.</h2><p>Create an invoice and generate your IntentPay checkout widget from the merchant tools.</p></div>
           <a className="landing-primary" href="/merchant">Try it now <span>↗</span></a>
         </section>
       </main>
-      <footer className="landing-footer"><a className="landing-brand" href="/"><span className="landing-brand-mark">I</span><span>intent<span>pay</span></span></a><span>Cross-chain payments, made simpler.</span><a href="https://x.com/Intent_Payy" target="_blank" rel="noreferrer">Follow on X ↗</a></footer>
+      <footer className="landing-footer"><a className="landing-brand" href="/"><span className="landing-brand-mark">I</span><span>intent<span>pay</span></span></a><span>Universal crypto checkout, powered by NEAR Intents.</span><a href="https://x.com/Intent_Payy" target="_blank" rel="noreferrer">Follow on X ↗</a></footer>
     </div>
   );
 }
