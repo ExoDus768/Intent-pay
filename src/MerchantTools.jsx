@@ -80,9 +80,17 @@ export default function MerchantTools({ open = false, onClose = () => {}, tokens
           <input id="intentpay-merchant-name" value={merchantName} onChange={e => setMerchantName(e.target.value)} placeholder="e.g. Acme Store" maxLength={80} />
 
           <label>Payment amount</label>
-          <div className="widget-mode-switch">
-            <button type="button" className={mode === 'variable' ? 'active' : ''} onClick={() => setMode('variable')}>Customer enters amount</button>
-            <button type="button" className={mode === 'fixed' ? 'active' : ''} onClick={() => setMode('fixed')}>Fixed amount</button>
+          <div className="widget-mode-switch" role="group" aria-label="Choose payment amount type">
+            <button type="button" className={mode === 'variable' ? 'active' : ''} aria-pressed={mode === 'variable'} onClick={() => setMode('variable')}>
+              <span className="widget-mode-check">{mode === 'variable' ? '✓' : '＋'}</span>
+              <strong>Customer enters amount</strong>
+              <small>Let the customer choose what to pay</small>
+            </button>
+            <button type="button" className={mode === 'fixed' ? 'active' : ''} aria-pressed={mode === 'fixed'} onClick={() => setMode('fixed')}>
+              <span className="widget-mode-check">{mode === 'fixed' ? '✓' : '＄'}</span>
+              <strong>Fixed amount</strong>
+              <small>Set the exact amount to collect</small>
+            </button>
           </div>
           {mode === 'fixed' && <><label htmlFor="intentpay-fixed-amount">Amount customer must pay</label><input id="intentpay-fixed-amount" type="number" min="0.00000001" step="any" value={fixedAmount} onChange={e => setFixedAmount(e.target.value)} placeholder="e.g. 25.00" /></>}
 
