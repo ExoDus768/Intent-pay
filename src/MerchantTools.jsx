@@ -11,9 +11,12 @@ export default function MerchantTools({ open = false, onClose = () => {}, tokens
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
 
-  const chains = useMemo(() => [...new Set(tokens.map(t => String(t.blockchain || '').toLowerCase()).filter(Boolean))].sort(), [tokens]);
-  const payoutTokens = useMemo(() => tokens.filter(t => String(t.blockchain || '').toLowerCase() === destinationChain), [tokens, destinationChain]);
-  const selected = tokens.find(t => t.assetId === destinationAsset);
+  const chainOf = t => String(t?.blockchain || '').trim().toLowerCase();
+  const chains = useMemo(() => [...new Set(tokens.filter(t => t?.assetId && chainOf(t)).map(chainOf))].sort(), [tokens]);
+  const payoutTokens = useMemo(() => tokens
+    .filter(t => t?.assetId && destinationChain && chainOf(t) === destinationChain)
+    .sort((a, b) => String(a.symbol || '').localeCompare(String(b.symbol || ''))), [tokens, destinationChain]);
+  const selected = tokens.find(t => String(t.assetId) === String(destinationAsset) && chainOf(t) === destinationChain);
   const addressValid = selected?.blockchain?.toLowerCase() === 'near'
     ? /^[a-z0-9]+([._-][a-z0-9]+)*$/.test(recipient.trim())
     : /^0x[a-fA-F0-9]{40}$/.test(recipient.trim());
@@ -68,11 +71,14 @@ export default function MerchantTools({ open = false, onClose = () => {}, tokens
             <option value="">Choose payout network</option>
             {chains.map(chain => <option key={chain} value={chain}>{chain.toUpperCase()}</option>)}
           </select>
-          <label htmlFor="intentpay-payout-token">Payout token</label>
-          <select id="intentpay-payout-token" value={destinationAsset} onChange={e => setDestinationAsset(e.target.value)} disabled={!destinationChain}>
-            <option value="">Choose payout token</option>
-            {payoutTokens.map(t => <option key={t.assetId} value={t.assetId}>{t.symbol} · {t.name || t.blockchain}</option>)}
-          </select>
+          {destinationChain ? <>
+            <label htmlFor="intentpay-payout-token">Payout token on {destinationChain.toUpperCase()}</label>
+            <select id="intentpay-payout-token" value={destinationAsset} onChange={e => setDestinationAsset(e.target.value)} disabled={payoutTokens.length === 0}>
+              <option value="">{payoutTokens.length ? 'Choose a payout token' : 'No supported tokens on this network'}</option>
+              {payoutTokens.map(t => <option key={t.assetId} value={t.assetId}>{t.symbol || 'TOKEN'}{t.name ? ' · ' + t.name : ''}</option>)}
+            </select>
+            {payoutTokens.length === 0 && <p className="merchant-error">No payout tokens are currently available for this network in the live NEAR Intents registry. Choose another network.</p>}
+          </> : <p className="merchant-hint">Choose a payout network first. Only tokens supported on that network will appear here.</p>}
           <label htmlFor="intentpay-recipient">Your receiving wallet address</label>
           <input id="intentpay-recipient" value={recipient} onChange={e => setRecipient(e.target.value.trim())} placeholder={selected?.blockchain?.toLowerCase() === 'near' ? 'merchant.near' : '0x…'} autoCapitalize="none" autoCorrect="off" spellCheck={false} />
           {recipient && selected && !addressValid && <p className="merchant-error">Enter a valid {selected.blockchain?.toLowerCase() === 'near' ? 'NEAR account ID' : 'EVM wallet address'} for this payout network.</p>}
