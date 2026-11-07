@@ -63,6 +63,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
   const [merchantWorkspaceOpen, setMerchantWorkspaceOpen] = useState(new URLSearchParams(window.location.search).get('workspace') === 'merchant');
   const [originChain, setOriginChain] = useState('');
   const [originAsset, setOriginAsset] = useState('');
+  const [originSearch, setOriginSearch] = useState('');
   const [destinationChain, setDestinationChain] = useState('');
   const [destinationAsset, setDestinationAsset] = useState(merchantAssetParam);
   const [amount, setAmount] = useState(merchantAmountParam);
@@ -305,6 +306,11 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
   const origins = useMemo(() => tokens.filter(t => CHAIN_IDS[tokenChain(t)] || (isNearToken(t) && (t.contractAddress || t.assetId === 'nep141:wrap.near'))), [tokens]);
   const originChains = useMemo(() => [...new Set(origins.map(tokenChain))].sort((a, b) => chainLabel(a).localeCompare(chainLabel(b))), [origins]);
   const originTokens = useMemo(() => origins.filter(t => tokenChain(t) === originChain).sort((a, b) => tokenPriority(a) - tokenPriority(b) || String(a.symbol || '').localeCompare(String(b.symbol || ''))), [origins, originChain]);
+  const filteredOriginTokens = useMemo(() => origins
+    .filter(t => !originSearch || (String(t.symbol || '') + ' ' + String(t.name || '') + ' ' + chainLabel(tokenChain(t))).toLowerCase().includes(originSearch.toLowerCase()))
+    .sort((a, b) => chainLabel(tokenChain(a)).localeCompare(chainLabel(tokenChain(b))) || tokenPriority(a) - tokenPriority(b) || String(a.symbol || '').localeCompare(String(b.symbol || ''))),
+  [origins, originSearch]);
+  const originTokenGroups = useMemo(() => [...new Set(filteredOriginTokens.map(tokenChain))], [filteredOriginTokens]);
   const destinations = useMemo(() => tokens, [tokens]);
   const destinationChains = useMemo(() => [...new Set(destinations.map(tokenChain))].sort((a, b) => chainLabel(a).localeCompare(chainLabel(b))), [destinations]);
   const destinationTokens = useMemo(() => destinations.filter(t => tokenChain(t) === destinationChain).sort((a, b) => tokenPriority(a) - tokenPriority(b) || String(a.symbol || '').localeCompare(String(b.symbol || ''))), [destinations, destinationChain]);
@@ -787,16 +793,29 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
       <div className="checkout-head"><div><div className="eyebrow">MAINNET SECURE CHECKOUT</div><h2>{checkoutOnly ? 'Complete payment' : 'Configure payment'}</h2></div><span className="mainnet-pill">MAINNET</span></div>
       <form onSubmit={e => e.preventDefault()}>
         <label>Customer pays with</label>
-        <label>Choose network</label>
-        <select value={originChain} onChange={e => { setOriginChain(e.target.value); setOriginAsset(''); }} required>
-          <option value="">Select payment network</option>
-          {originChains.map(chain => <option key={chain} value={chain}>{chainLabel(chain)}</option>)}
+        <p className="helper-text">Select the token you already have. You do not need to choose a network separately.</p>
+        <input
+          type="search"
+          value={originSearch}
+          onChange={e => setOriginSearch(e.target.value)}
+          placeholder="Search token or network (e.g. USDC, Base)"
+          aria-label="Search payment tokens by name or network"
+          disabled={loadingTokens}
+        />
+        <select value={originAsset} onChange={e => {
+          const selected = origins.find(t => t.assetId === e.target.value);
+          setOriginAsset(e.target.value);
+          setOriginChain(selected ? tokenChain(selected) : '');
+        }} required disabled={loadingTokens}>
+          <option value="">{loadingTokens ? 'Loading supported tokens…' : 'Choose the token in your wallet'}</option>
+          {originTokenGroups.map(chain => <optgroup key={chain} label={chainLabel(chain)}>
+            {filteredOriginTokens.filter(t => tokenChain(t) === chain).map(t => (
+              <option key={t.assetId} value={t.assetId}>{t.symbol || 'TOKEN'}{t.name && t.name !== t.symbol ? ' · ' + t.name : ''}</option>
+            ))}
+          </optgroup>)}
         </select>
-        <label>Choose token</label>
-        <select value={originAsset} onChange={e => setOriginAsset(e.target.value)} required disabled={!originChain || loadingTokens}>
-          <option value="">{!originChain ? 'Choose a network first' : 'Select available token'}</option>
-          {originTokens.map(t => <option key={t.assetId} value={t.assetId}>{t.symbol || 'TOKEN'}{t.name ? ' · ' + t.name : ''}</option>)}
-        </select>
+        {originSearch && filteredOriginTokens.length === 0 && <p className="warning">No supported token matches “{originSearch}”. Try another token name or network.</p>}
+        {origin && <p className="helper-text">Selected: <strong>{origin.symbol} on {chainLabel(tokenChain(origin))}</strong></p>}
         <label>{fixedOutputCheckout ? 'Merchant receives exactly' : 'Amount to pay'}</label><input type="number" min="0" step="any" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" required readOnly={Boolean(isFixedWidgetCheckout)} /><p className="helper-text">{usdEstimate !== null ? <>Estimated value: <strong>~ ${usdEstimate.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 4 })}</strong></> : amount && estimateToken ? 'USD estimate unavailable for this token right now.' : 'Enter an amount to see its approximate USD value.'}</p><p className="helper-text">Minimum payment: $0.01 USD equivalent, checked using live 1Click pricing.</p>{origin && !fixedOutputCheckout && <><p className="balance-line">{balanceLoading ? 'Checking wallet balance…' : originBalance !== '' ? <>Wallet balance: <strong>{Number(originBalance).toLocaleString(undefined, { maximumFractionDigits: 8 })} {origin.symbol}</strong></> : balanceError}</p><div className="percentage-row" aria-label="Select percentage of wallet balance">{[25, 50, 75, 100].map(percent => <button key={percent} type="button" className="percentage-btn" disabled={balanceLoading || originBalance === ''} onClick={() => { try { const units = parseUnits(originBalance, Number(origin.decimals || 0)); setAmount(formatUnits(units * BigInt(percent) / 100n, Number(origin.decimals || 0))); } catch { setNotice('Could not calculate this percentage. Check the selected asset balance.'); } }}>{percent === 100 ? 'MAX' : percent + '%'}</button>)}</div></>}
         <div className="section-rule"><span>MERCHANT RECEIVES</span></div>
         <label>Choose payout network</label>
