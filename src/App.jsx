@@ -45,7 +45,7 @@ function HomePage() {
         <section className="landing-hero">
           <div className="landing-copy">
             <div className="landing-eyebrow"><span></span> INTENTPAY · UNIVERSAL CHECKOUT</div>
-            <h1>One checkout button.<br /><em>Payments across Web3.</em></h1>
+            <h1>Universal Checkout Widget.<br /><em>One button. Crypto payments across Web3.</em></h1>
             <p>IntentPay is building a universal crypto checkout widget that any merchant or app can add to its website. Create an invoice, embed a Pay with crypto button, and let customers complete payment through a hosted checkout powered by NEAR Intents.</p>
             <div className="landing-actions">
               <a className="landing-primary" href="/cross-chain">Open merchant workspace <span>↗</span></a>
