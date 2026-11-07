@@ -1,34 +1,19 @@
 {
-  "name": "intentpay",
+  "name": "social-pay",
   "private": true,
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"npm:dev:client\" \"npm:dev:server\"",
-    "dev:client": "vite --host 0.0.0.0",
-    "dev:server": "node --watch server.js",
+    "dev": "vite --host 0.0.0.0",
     "build": "vite build",
-    "start": "node server.js",
     "preview": "vite preview"
   },
   "dependencies": {
-    "cors": "^2.8.5",
-    "dotenv": "^16.4.7",
-    "ethers": "^6.13.5",
-    "express": "^4.21.2",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "@near-wallet-selector/core": "^10.1.4",
-    "@near-wallet-selector/modal-ui": "^10.1.4",
-    "@near-wallet-selector/my-near-wallet": "^10.1.4",
-    "@walletconnect/ethereum-provider": "^2.26.0",
-    "@reown/appkit": "^1.8.24",
-    "qrcode": "^1.5.4",
-    "@vercel/blob": "^2.3.1"
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.4",
-    "concurrently": "^9.1.2",
     "vite": "^6.0.5"
   }
 }
