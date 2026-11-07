@@ -269,6 +269,54 @@ app.get('/api/tokens', async (_req, res) => {
   catch (error) { res.status(error.status || 502).json({ error: error.message }); }
 });
 
+
+/* Temporary read-only route diagnostics. Remove after the live route check. */
+app.get('/api/route-check', async (_req, res) => {
+  try {
+    const tokens = await getTokens();
+    const origin = tokens.find(t => t.assetId === 'nep245:v2_1.omni.hot.tg:56_2CMMyVTGZkeyNZTSvS5sarzfir6g');
+    if (!origin) return res.status(503).json({ error: 'BSC USDT source token is not in the live registry.' });
+    const wanted = [
+      ['NEAR', 'USDT', 'nep141:usdt.tether-token.near'],
+      ['Ethereum', 'USDT', 'nep141:eth-0xdac17f958d2ee523a2206206994597c13d831ec7.omft.near'],
+      ['Ethereum', 'USDC', 'nep141:eth-0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48.omft.near'],
+      ['Arbitrum', 'USDC', 'nep141:arb-0xaf88d065e77c8cc2239327c5edb3a432268e5831.omft.near'],
+      ['Base', 'USDC', 'nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near'],
+      ['Optimism', 'USDC', 'nep245:v2_1.omni.hot.tg:10_A2ewyUyDp6qsue1jqZsGypkCxRJ'],
+      ['Optimism', 'USDT', 'nep245:v2_1.omni.hot.tg:10_359RPSJVdTxwTJT9TyGssr2rFoWo']
+    ];
+    const amountsUsd = [0.01, 1, 10, 100, 1000];
+    const results = [];
+    for (const [chain, symbol, assetId] of wanted) {
+      const destination = tokens.find(t => t.assetId === assetId);
+      if (!destination) { results.push({ chain, symbol, result: 'TOKEN_NOT_IN_REGISTRY' }); continue; }
+      let outcome = { chain, symbol, result: 'NO_QUOTE_AT_TESTED_AMOUNTS', tested: [] };
+      for (const usd of amountsUsd) {
+        const atomic = (BigInt(Math.round(usd * 1e6)) * 1000000000000n).toString();
+        try {
+          const data = await oneClick('/quote', { method: 'POST', body: JSON.stringify({
+            dry: true, swapType: 'EXACT_INPUT', originAsset: origin.assetId,
+            destinationAsset: destination.assetId, amount: atomic,
+            recipient: String(destination.blockchain).toLowerCase() === 'near' ? 'intentpay.near' : '0x000000000000000000000000000000000000dEaD',
+            refundTo: '0x000000000000000000000000000000000000dEaD',
+            depositType: 'ORIGIN_CHAIN', recipientType: 'DESTINATION_CHAIN',
+            refundType: 'ORIGIN_CHAIN', slippageTolerance: 100,
+            quoteWaitingTimeMs: 0, referral: 'intentpay-route-check'
+          }) });
+          outcome.tested.push({ inputUsd: usd, status: 'QUOTE_OK', amountInUsd: data?.quote?.amountInUsd, amountOutUsd: data?.quote?.amountOutUsd, amountOutFormatted: data?.quote?.amountOutFormatted });
+          outcome.result = 'LOWEST_SUCCESSFUL_TEST';
+          outcome.lowestSuccessfulTestUsd = usd;
+          break;
+        } catch (error) {
+          outcome.tested.push({ inputUsd: usd, status: 'NO_QUOTE', error: error.message });
+        }
+      }
+      results.push(outcome);
+    }
+    res.json({ source: { chain: 'BSC', symbol: 'USDT', assetId: origin.assetId }, testedAt: new Date().toISOString(), amountsUsd, results, note: 'Read-only dry quotes; no deposit addresses or funds movement.' });
+  } catch (error) { res.status(error.status || 502).json({ error: error.message }); }
+});
+
 app.post('/api/quote', async (req, res) => {
   try {
     const tokens = await getTokens();
