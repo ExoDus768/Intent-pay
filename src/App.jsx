@@ -129,6 +129,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
   const [txHash, setTxHash] = useState('');
   const [swapStatus, setSwapStatus] = useState('');
   const [customerHistory, setCustomerHistory] = useState([]);
+  const [historyAuth, setHistoryAuth] = useState({ account: '', token: '', status: 'idle', error: '' });
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('Connect your EVM or NEAR mainnet wallet, choose the asset you will pay with, and set the merchant payout details.');
   const quoteRequestRef = useRef(0);
@@ -215,6 +216,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
   const origin = useMemo(() => tokens.find(t => tokenId(t) === originAsset), [tokens, originAsset]);
   const destination = useMemo(() => tokens.find(t => tokenId(t) === destinationAsset), [tokens, destinationAsset]);
   const customerAccount = isNearToken(origin || {}) ? nearWallet : wallet;
+
   const historyStorageKey = customerAccount ? 'intentpay_customer_history_' + customerAccount.toLowerCase() : '';
   useEffect(() => {
     if (!historyStorageKey) { setCustomerHistory([]); return; }
@@ -224,20 +226,97 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
     } catch { setCustomerHistory([]); }
   }, [historyStorageKey]);
 
+  function mergeHistoryRows(...groups) {
+    const byId = new Map();
+    for (const row of groups.flat()) {
+      if (!row?.id) continue;
+      const previous = byId.get(row.id);
+      byId.set(row.id, previous ? { ...previous, ...row,
+        createdAt: previous.createdAt || row.createdAt,
+        updatedAt: (Date.parse(row.updatedAt || row.createdAt || 0) >= Date.parse(previous.updatedAt || previous.createdAt || 0)) ? (row.updatedAt || row.createdAt) : previous.updatedAt
+      } : row);
+    }
+    return [...byId.values()].sort((x,y) => Date.parse(y.updatedAt || y.createdAt || 0) - Date.parse(x.updatedAt || x.createdAt || 0)).slice(0,100);
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!customerAccount) {
+      setHistoryAuth({ account: '', token: '', status: 'idle', error: '' });
+      return undefined;
+    }
+    const account = customerAccount;
+    const chain = isNearToken(origin || {}) ? 'near' : 'evm';
+    setHistoryAuth({ account, token: '', status: 'signing', error: '' });
+    (async () => {
+      const challengeResponse = await fetch('/api/history/challenge', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wallet: account, chain })
+      });
+      const challenge = await challengeResponse.json();
+      if (!challengeResponse.ok) throw new Error(challenge.error || 'Could not start wallet sign-in.');
+      let signature = '';
+      let publicKey = '';
+      if (chain === 'near') {
+        if (!nearSelector) throw new Error('NEAR wallet is still initializing. Try again in a moment.');
+        const walletApi = await nearSelector.wallet();
+        const nonce = new Uint8Array(challenge.nonce.match(/.{2}/g).map(byte => parseInt(byte, 16)));
+        const signed = await walletApi.signMessage({ message: challenge.message, recipient: challenge.recipient, nonce });
+        const result = signed?.response || signed;
+        signature = result?.signature || '';
+        publicKey = result?.publicKey || '';
+        if (result?.accountId && result.accountId !== account) throw new Error('The NEAR wallet signed with a different account.');
+      } else {
+        const provider = activeEvmProviderRef.current || walletConnectProviderRef.current || window.ethereum;
+        if (!provider?.request) throw new Error('Reconnect your EVM wallet to securely sync transaction history.');
+        signature = await provider.request({ method: 'personal_sign', params: [challenge.message, account] });
+      }
+      const verifyResponse = await fetch('/api/history/verify', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ challengeToken: challenge.challengeToken, signature, publicKey })
+      });
+      const verified = await verifyResponse.json();
+      if (!verifyResponse.ok) throw new Error(verified.error || 'Wallet sign-in failed.');
+      const authHeaders = { Authorization: 'Bearer ' + verified.token };
+      const cloudResponse = await fetch('/api/history', { headers: authHeaders });
+      const cloud = await cloudResponse.json();
+      if (!cloudResponse.ok) throw new Error(cloud.error || 'Could not load synced transaction history.');
+      let localRows = [];
+      try { localRows = JSON.parse(localStorage.getItem('intentpay_customer_history_' + account.toLowerCase()) || '[]'); } catch {}
+      const merged = mergeHistoryRows(Array.isArray(cloud.entries) ? cloud.entries : [], Array.isArray(localRows) ? localRows : []);
+      if (cancelled) return;
+      setCustomerHistory(merged);
+      localStorage.setItem('intentpay_customer_history_' + account.toLowerCase(), JSON.stringify(merged));
+      await fetch('/api/history', {
+        method: 'PUT', headers: { ...authHeaders, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entries: merged })
+      });
+      if (!cancelled) setHistoryAuth({ account, token: verified.token, status: 'ready', error: '' });
+    })().catch(error => {
+      if (!cancelled) setHistoryAuth({ account, token: '', status: 'error', error: error?.message || 'Wallet history sync failed.' });
+    });
+    return () => { cancelled = true; };
+  }, [customerAccount, nearSelector, origin]);
+
   function saveCustomerHistory(entry) {
     const account = entry.account || customerAccount;
     if (!account) return;
     const key = 'intentpay_customer_history_' + account.toLowerCase();
     try {
       const previous = JSON.parse(localStorage.getItem(key) || '[]');
-      const rows = Array.isArray(previous) ? previous : [];
-      const index = rows.findIndex(row => row.id === entry.id);
-      const next = index >= 0
-        ? rows.map((row, i) => i === index ? { ...row, ...entry, updatedAt: new Date().toISOString() } : row)
-        : [{ ...entry, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }, ...rows];
-      localStorage.setItem(key, JSON.stringify(next.slice(0, 100)));
-      if (account.toLowerCase() === customerAccount.toLowerCase()) setCustomerHistory(next.slice(0, 100));
-    } catch { setNotice('Payment submitted, but this browser could not save the local transaction history.'); }
+      const rows = mergeHistoryRows(previous, [{ ...entry, createdAt: entry.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString() }]);
+      localStorage.setItem(key, JSON.stringify(rows));
+      if (account.toLowerCase() === customerAccount?.toLowerCase()) setCustomerHistory(rows);
+      if (historyAuth.account.toLowerCase() === account.toLowerCase() && historyAuth.token) {
+        fetch('/api/history', {
+          method: 'PUT',
+          headers: { Authorization: 'Bearer ' + historyAuth.token, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ entries: rows })
+        }).then(async response => {
+          if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(data.error || 'Cloud history update failed.'); }
+        }).catch(error => setNotice('Payment status updated, but cloud history sync failed: ' + error.message));
+      }
+    } catch { setNotice('Payment submitted, but transaction history could not be saved.'); }
   }
 
   function recordCurrentPayment(status, hash = txHash) {
@@ -785,15 +864,15 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
       </button>}
     </section>
     {checkoutOnly && <section className="customer-history">
-      <div className="customer-history-head"><div><div className="eyebrow">YOUR ACTIVITY</div><h2>Transaction history</h2><p>Payments made from this wallet on this browser.</p></div><span className="history-count">{customerHistory.length} {customerHistory.length === 1 ? 'payment' : 'payments'}</span></div>
-      {!customerAccount ? <p className="history-empty">Connect the wallet you used to pay to view its saved transaction history.</p> : customerHistory.length === 0 ? <p className="history-empty">No payments recorded for this wallet on this browser yet.</p> : <div className="history-list">{customerHistory.map(item => <article className="history-item" key={item.id}>
+      <div className="customer-history-head"><div><div className="eyebrow">YOUR ACTIVITY</div><h2>Transaction history</h2><p>Payments made by this wallet. Sign with the wallet to sync across devices.</p></div><span className="history-count">{customerHistory.length} {customerHistory.length === 1 ? 'payment' : 'payments'}</span></div>
+      {!customerAccount ? <p className="history-empty">Connect the wallet you used to pay to view its transaction history.</p> : historyAuth.status === 'signing' ? <p className="history-empty">Sign the wallet message to securely load your synced history…</p> : historyAuth.status === 'error' ? <p className="history-empty">History sync needs wallet verification: {historyAuth.error}</p> : customerHistory.length === 0 ? <p className="history-empty">No payments recorded for this wallet yet.</p> : <div className="history-list">{customerHistory.map(item => <article className="history-item" key={item.id}>
         <div className="history-item-top"><strong>{item.merchant || 'Merchant payment'}</strong><span className={'history-status status-' + String(item.status || 'processing').toLowerCase()}>{String(item.status || 'PROCESSING').replaceAll('_', ' ')}</span></div>
         <div className="history-amount">{item.amountPaid || '—'} {item.sourceToken || ''}<span>→</span>{item.amountReceived || '—'} {item.destinationToken || ''}</div>
         <div className="history-route">{item.sourceNetwork || 'Source'} → {item.destinationNetwork || 'Destination'}</div>
         {item.transactionHash && <div className="history-hash">Transaction: <code>{short(item.transactionHash)}</code></div>}
         <div className="history-date">{new Date(item.createdAt || item.updatedAt || Date.now()).toLocaleString()}</div>
       </article>)}</div>}
-      <p className="history-disclaimer">History is saved locally in this browser and is tied to the connected wallet. It won't automatically sync across devices or browsers.</p>
+      <p className="history-disclaimer">Your history is tied to your wallet and stored in private cloud storage. Connect the same wallet and sign the verification message on another device to see the same records.</p>
     </section>}
     <footer><span>IntentPay</span><span>{checkoutOnly ? 'Secure checkout powered by NEAR Intents' : 'Non-custodial cross-chain checkout'}</span></footer>
   </main>;
