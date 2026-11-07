@@ -158,3 +158,17 @@
 
 .feature-order{display:block;margin:0 0 8px;color:#a6f36a;font-size:9px;font-weight:800;letter-spacing:1.4px}
 .landing-feature-main .feature-order{margin-bottom:9px}
+
+
+/* Dedicated merchant workspace and customer checkout pages */
+.merchant-page-wrapper{width:100%;display:flex;justify-content:center;padding:28px 0 60px}
+.merchant-page-card{width:min(720px,100%);max-height:none;overflow:visible;box-shadow:0 24px 90px #0005}
+.merchant-page-shell{max-width:1080px}
+.merchant-page-nav{display:flex;align-items:center;justify-content:space-between;padding:8px 0 20px;border-bottom:1px solid #ffffff12}
+.merchant-back-link{color:#a6f36a;text-decoration:none;font-size:12px;font-weight:700}
+.customer-checkout-shell{max-width:850px}
+.customer-nav{padding-bottom:18px;border-bottom:1px solid #ffffff12}
+.customer-nav .site-menu-wrap{display:none}
+.customer-checkout-shell .checkout{margin:38px auto 0}
+.customer-checkout-shell footer{max-width:680px;margin:24px auto 0}
+@media(max-width:600px){.merchant-page-wrapper{padding:16px 0 35px}.merchant-page-card{padding:17px}.customer-checkout-shell{padding:18px}.customer-checkout-shell .checkout{padding:19px;margin-top:24px}}
