@@ -259,7 +259,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
       let publicKey = '';
       if (chain === 'near') {
         if (!nearSelector) throw new Error('NEAR wallet is still initializing. Try again in a moment.');
-        const walletApi = await nearSelector.wallet('my-near-wallet');
+        const walletApi = await nearSelector.wallet();
         const nonce = new Uint8Array(challenge.nonce.match(/.{2}/g).map(byte => parseInt(byte, 16)));
         const signed = await walletApi.signMessage({ message: challenge.message, recipient: challenge.recipient, nonce });
         const result = signed?.response || signed;
