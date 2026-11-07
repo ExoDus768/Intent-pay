@@ -71,7 +71,6 @@ This is a hackathon prototype, not an audited payment processor.
 - Merchant workspace settings generate a public hosted checkout URL and embeddable button. Merchant accounts, saved configurations and payment history are not implemented.
 - NEAR deposits use NEAR mainnet and the MyNearWallet wallet-selector module. The NEAR-origin flow supports registry-listed NEP-141 contracts and wraps native NEAR to wNEAR before transfer. This path has not yet been end-to-end tested with a live 1Click quote.
 - Other non-EVM wallet deposit flows are not implemented, even if their assets appear in the live registry as payout options.
-- Webhook delivery is triggered when a payment status is checked. A background reconciliation worker is still required for guaranteed delivery if a customer closes the checkout page.
 - There is no refund-management interface.
 - The server validates asset IDs against the live token registry and validates payout/refund addresses. Production still needs merchant authentication, monitoring, and security review.
 - A failed notification after a confirmed on-chain deposit must be reconciled by checking the quote status. Do not send a second deposit for the same quote.
