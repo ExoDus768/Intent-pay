@@ -32,7 +32,7 @@ export default function MerchantTools({ open = false, onClose = () => {}, tokens
     return window.location.origin + '/checkout?' + params.toString();
   }, [ready, destinationAsset, recipient, merchantName, mode, fixedAmount]);
   const embed = config
-    ? '<button type="button" data-intentpay-checkout data-intentpay-url="' + config + '">' + buttonLabel.trim() + '</button>\\n<script src="' + window.location.origin + '/intentpay.js" defer></script>'
+    ? '<button type="button" data-intentpay-checkout data-intentpay-url="' + config + '">' + buttonLabel.trim() + '</button>\n<script src="' + window.location.origin + '/intentpay.js" defer></script>'
     : '';
 
   async function copy(value, label) {
