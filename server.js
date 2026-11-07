@@ -324,7 +324,7 @@ app.post('/api/quote', async (req, res) => {
     const tokens = await getTokens();
     const input = validateQuoteBody(req.body, tokens);
     const request = {
-      dry: false,
+      dry: req.body?.dry === true,
       swapType: input.swapType,
       originAsset: input.origin.assetId,
       destinationAsset: input.destination.assetId,
@@ -345,7 +345,7 @@ app.post('/api/quote', async (req, res) => {
         ? 'Minimum payment amount is $0.01 USD equivalent.'
         : '1Click did not return a valid USD input estimate, so the $0.01 minimum cannot be verified. Please try again.' });
     }
-    if (!data?.quote?.depositAddress || !data?.quote?.amountIn) {
+    if (req.body?.dry !== true && (!data?.quote?.depositAddress || !data?.quote?.amountIn)) {
       return res.status(502).json({ error: '1Click returned an incomplete committed quote. No payment should be sent.' });
     }
     res.json({ ...data, intentpay: { origin: input.origin, destination: input.destination } });
