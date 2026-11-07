@@ -300,7 +300,7 @@ app.get('/api/route-check', async (_req, res) => {
             dry: true, swapType: 'EXACT_INPUT', originAsset: origin.assetId,
             destinationAsset: destination.assetId, amount: atomic,
             recipient: 'wrap.near',
-            refundTo: '0x000000000000000000000000000000000000dEaD',
+            refundTo: '0x000000000000000000000000000000000000dead',
             depositType: 'ORIGIN_CHAIN', recipientType: 'DESTINATION_CHAIN',
             refundType: 'ORIGIN_CHAIN', slippageTolerance: 100,
             quoteWaitingTimeMs: 0, deadline: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
