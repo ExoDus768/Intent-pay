@@ -99,7 +99,7 @@ export default function MerchantTools({ open = false, onClose = () => {}, tokens
             <label>Hosted checkout link</label>
             <div className="widget-direct-link"><code>{config}</code><button type="button" className="secondary" onClick={() => copy(config, 'Checkout link')}>Copy link</button></div>
           </>}
-          {!ready && <p className="empty-invoices">Choose a payout network and token, enter your receiving wallet address, and complete the amount settings to generate your widget.</p>}
+          {!ready && <p className="widget-setup-hint">Choose a payout network and token, enter your receiving wallet address, and complete the amount settings to generate your widget.</p>}
           <p className="merchant-hint">The button opens IntentPay's hosted mainnet checkout. Customers connect their own wallet, review the live NEAR Intents quote and network fee, then approve the payment. Your receiving address and payout asset are included in the public checkout link.</p>
           {error && <p className="merchant-error">{error}</p>}
           {notice && <p className="merchant-notice">{notice}</p>}
