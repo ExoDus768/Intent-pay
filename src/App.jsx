@@ -92,7 +92,13 @@ export default function App() {
 }
 
 function MerchantApp() {
-  const checkoutParams = new URLSearchParams(window.location.search);\n  const merchantAssetParam = checkoutParams.get('merchantAsset') || '';\n  const merchantRecipientParam = checkoutParams.get('merchantRecipient') || '';\n  const merchantAmountParam = checkoutParams.get('merchantAmount') || '';\n  const isWidgetCheckout = Boolean(merchantAssetParam && merchantRecipientParam);\n  const isFixedWidgetCheckout = isWidgetCheckout && Boolean(merchantAmountParam && Number(merchantAmountParam) > 0);\n  const [health, setHealth] = useState('Checking service…');
+  const checkoutParams = new URLSearchParams(window.location.search);
+  const merchantAssetParam = checkoutParams.get('merchantAsset') || '';
+  const merchantRecipientParam = checkoutParams.get('merchantRecipient') || '';
+  const merchantAmountParam = checkoutParams.get('merchantAmount') || '';
+  const isWidgetCheckout = Boolean(merchantAssetParam && merchantRecipientParam);
+  const isFixedWidgetCheckout = isWidgetCheckout && Boolean(merchantAmountParam && Number(merchantAmountParam) > 0);
+  const [health, setHealth] = useState('Checking service…');
   const [configured, setConfigured] = useState(false);
   const [tokens, setTokens] = useState([]);
   const [loadingTokens, setLoadingTokens] = useState(true);
