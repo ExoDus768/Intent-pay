@@ -1,59 +1,58 @@
 # IntentPay Universal Checkout Widget
 
-IntentPay's widget lets a merchant place a checkout button on any website while keeping wallet connection, token selection, quote generation and payment approval on the hosted IntentPay checkout.
+IntentPay provides a reusable checkout button for merchants and apps. Customers open a hosted checkout, connect a supported mainnet wallet, review a live NEAR Intents quote and approve the payment themselves.
 
-## 1. Create a payment request
+## Configure the widget
 
-1. Open the IntentPay merchant site.
-2. Open **Merchant tools** and create an invoice with the payout network, payout token, exact amount and merchant wallet address.
-3. Copy the invoice ID from the payment link. It is the value after `?invoice=`.
+Open the **Merchant workspace** from the top-left navigation. Set:
+- Your payout network, token and receiving wallet address.
+- **Customer enters amount** for variable payments, or **Fixed amount** for a fixed-price checkout.
+- Optional business/payment name and button label.
 
-The invoice ID is a public checkout reference, not a password. Do not put API keys, wallet private keys or webhook secrets in browser code.
+Copy the generated embed snippet or hosted checkout link. No invoice creation or dashboard is required to publish the reusable widget.
 
-## 2. Add the button
+## Add the button to a website
 
-Paste this where you want checkout to appear. Replace `YOUR_INVOICE_ID` with the ID from the payment link.
+Paste the generated snippet into your page:
 
 ```html
-<button type="button" data-intentpay-checkout data-intentpay-invoice="YOUR_INVOICE_ID">
-  Pay with crypto
-</button>
+<button type="button" data-intentpay-checkout data-intentpay-url="YOUR_GENERATED_CHECKOUT_URL">Pay with crypto</button>
 <script src="https://intent-pay-exo-c836.vercel.app/intentpay.js" defer></script>
 ```
 
-The button opens the hosted IntentPay checkout in a separate window. If the browser blocks the popup, the customer is redirected to checkout in the current tab. This keeps wallet permissions and signing in the top-level IntentPay page rather than inside a third-party iframe.
+The generated URL contains the selected payout asset and public receiving address. A fixed-price widget also includes its payout amount. Treat the link as public: do not put private keys, API credentials or secrets in it.
 
-## 3. Open checkout programmatically
-
-```html
-<button id="pay">Checkout</button>
-<script src="https://intent-pay-exo-c836.vercel.app/intentpay.js" defer></script>
-<script>
-  document.getElementById('pay').addEventListener('click', function () {
-    window.IntentPay.open({ invoiceId: 'YOUR_INVOICE_ID' });
-  });
-</script>
-```
-
-## 4. Listen for widget events
-
-Buttons with `data-intentpay-checkout` emit `intentpay:open` after checkout is opened and `intentpay:error` if the invoice ID is missing or invalid.
+## Open checkout programmatically
 
 ```js
-document.addEventListener('intentpay:open', function (event) {
-  console.log('IntentPay checkout opened', event.detail.invoiceId);
-});
-document.addEventListener('intentpay:error', function (event) {
-  console.error(event.detail.message);
+window.IntentPay.open({
+  merchantAsset: 'LIVE_1CLICK_ASSET_ID',
+  merchantRecipient: 'MERCHANT_WALLET_ADDRESS',
+  amount: '25.00', // optional; omit for customer-entered amount
+  merchantName: 'Your Store'
 });
 ```
 
-## Current scope and important notes
+You can also pass a generated same-origin checkout URL:
 
-- Checkout is hosted by IntentPay; merchants do not handle wallet keys or transaction signing.
-- The customer can choose from the live assets and networks supported by the current 1Click token registry.
-- The invoice fixes the merchant's payout asset, amount and recipient. The customer chooses the source asset/network in checkout.
-- The checkout is mainnet-only. Customers must review the quote and network details before approving.
-- This first widget release is a button/hosted-checkout launcher, not an iframe or a fully headless SDK.
-- Payment completion must be determined from the invoice status or the configured signed webhook. A button click is not proof of payment.
-- Merchant invoice storage currently requires the IntentPay server's Upstash Redis configuration.
+```js
+window.IntentPay.open({ url: 'YOUR_GENERATED_CHECKOUT_URL' });
+```
+
+## Events
+
+The widget emits `intentpay:open` after opening hosted checkout and `intentpay:error` if its configuration is invalid.
+
+```js
+document.addEventListener('intentpay:open', event => console.log('Checkout opened', event.detail));
+document.addEventListener('intentpay:error', event => console.error(event.detail.message));
+```
+
+## Payment safety and status
+
+- The widget opens hosted checkout; it does not initiate a wallet transaction on button click.
+- Customers choose their source asset/network, connect their wallet, review the live quote, amount and network gas, then explicitly approve.
+- Variable mode uses an exact-input quote. Fixed mode uses an exact-output quote so the merchant's configured payout amount is targeted.
+- Mainnet only. The minimum quote is $0.01 USD equivalent, checked against the live 1Click quote.
+- Payment status is confirmed from the 1Click status response. A button click or transaction submission alone is not proof of completed settlement.
+- The merchant payout asset and receiving address are public checkout configuration. Validate that the address belongs to your business before publishing the link.
