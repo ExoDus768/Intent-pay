@@ -30,11 +30,65 @@ const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 
 
+function HomePage() {
+  return (
+    <div className="landing-shell">
+      <header className="landing-nav">
+        <a className="landing-brand" href="/" aria-label="IntentPay home"><span className="landing-brand-mark">I</span><span>intent<span>pay</span></span></a>
+        <nav className="landing-nav-links">
+          <a href="/cross-chain">Cross-chain payment</a>
+          <a href="/social-pay">Social Pay</a>
+          <a href="https://x.com/Intent_Payy" target="_blank" rel="noreferrer">Follow on X ↗</a>
+        </nav>
+      </header>
+      <main>
+        <section className="landing-hero">
+          <div className="landing-copy">
+            <div className="landing-eyebrow"><span></span> INTENTPAY · UNIVERSAL CHECKOUT</div>
+            <h1>One checkout button.<br /><em>Payments across Web3.</em></h1>
+            <p>IntentPay is building a universal crypto checkout widget that any merchant or app can add to its website. Create an invoice, embed a Pay with crypto button, and let customers complete payment through a hosted checkout powered by NEAR Intents.</p>
+            <div className="landing-actions">
+              <a className="landing-primary" href="/cross-chain">Open merchant workspace <span>↗</span></a>
+              <a className="landing-secondary" href="/cross-chain">Explore cross-chain payment</a>
+            </div>
+            <div className="landing-trust"><span className="landing-dot"></span> One integration · Supported wallets and networks · Non-custodial approval</div>
+          </div>
+          <div className="landing-preview-wrap">
+            <div className="landing-glow"></div>
+            <div className="landing-preview">
+              <div className="preview-top"><span className="preview-brand"><b>I</b> intentpay</span><span className="preview-tag">UNIVERSAL CHECKOUT</span></div>
+              <div className="preview-title">Pay with crypto</div>
+              <p className="preview-subtitle">A merchant adds one button. IntentPay handles the checkout flow.</p>
+              <div className="preview-field"><span>INVOICE</span><strong>Merchant payment</strong></div>
+              <div className="preview-field"><span>PAY FROM</span><strong><i className="preview-coin">◈</i> Your wallet and network <small>⌄</small></strong></div>
+              <div className="preview-field"><span>MERCHANT RECEIVES</span><strong><i className="preview-coin green">◎</i> Their selected asset</strong></div>
+              <div className="preview-continue">Continue to checkout <span>→</span></div>
+              <div className="preview-foot">Hosted checkout · Live quote · Wallet approval</div>
+            </div>
+          </div>
+        </section>
+        <section className="landing-features">
+          <div className="landing-section-heading"><span>THE CORE TECHNOLOGY</span><h2>Universal Checkout Widget</h2><p>Merchants should not need to build a crypto payment system from scratch.</p></div>
+          <article className="landing-feature landing-feature-main"><div className="feature-icon">⌘</div><div><h3>Integrate once. Accept supported crypto payments.</h3><p>Generate an invoice in the merchant workspace, copy the IntentPay embed snippet, and add a Pay with crypto button to any website. Customers are sent to IntentPay's hosted checkout to connect a wallet, review a quote and approve the payment. The invoice status tracks settlement.</p><a href="/cross-chain" className="landing-feature-link">Build with the checkout widget ↗</a></div></article>
+          <div className="landing-feature-grid">
+            <article className="landing-feature"><div className="feature-icon">⇄</div><h3>Cross-chain payment</h3><p>Customers can pay from supported networks and assets while merchants receive their chosen payout asset through NEAR Intents.</p><a href="/cross-chain" className="landing-feature-link">Open swapping page ↗</a></article>
+            <article className="landing-feature"><div className="feature-icon">◎</div><h3>Merchant tools</h3><p>Create invoices, share payment links, and configure your checkout widget from one workspace.</p><a href="/cross-chain" className="landing-feature-link">Open merchant workspace ↗</a></article>
+            <article className="landing-feature landing-feature-social"><div className="feature-icon">𝕏</div><h3>Social Pay</h3><p>A separate social payment feature currently in development.</p><a href="/social-pay" className="landing-feature-link">View Social Pay preview ↗</a></article>
+          </div>
+        </section>
+      </main>
+      <footer className="landing-footer"><a className="landing-brand" href="/"><span className="landing-brand-mark">I</span><span>intent<span>pay</span></span></a><span>Universal checkout, powered by NEAR Intents.</span><a href="https://x.com/Intent_Payy" target="_blank" rel="noreferrer">Follow on X ↗</a></footer>
+    </div>
+  );
+}
+
 export default function App() {
   const path = window.location.pathname;
-  const hasInvoice = new URLSearchParams(window.location.search).has('invoice');
+  const invoiceId = new URLSearchParams(window.location.search).get('invoice');
   if (path.startsWith('/social-pay')) return <SocialPayPage />;
-  return <MerchantApp />;
+  if (path === '/cross-chain' || path === '/cross-chain/') return <MerchantApp />;
+  if (invoiceId) return <MerchantApp />;
+  return <HomePage />;
 }
 
 function MerchantApp() {
@@ -615,7 +669,7 @@ function MerchantApp() {
   }
 
   return <main className="shell">
-    <nav className="nav"><div className="site-menu-wrap" ref={siteMenuWrapRef}><button type="button" className="hamburger-btn" aria-label="Open navigation menu" aria-expanded={siteMenuOpen} onClick={() => setSiteMenuOpen(open => !open)}><span></span><span></span><span></span></button>{siteMenuOpen && <div className="site-menu"><a href="#how-it-works" onClick={() => setSiteMenuOpen(false)}>Cross-chain payment <span>↗</span></a><a href="#how-it-works" onClick={() => setSiteMenuOpen(false)}>How it works</a><a href="#checkout" onClick={() => setSiteMenuOpen(false)}>Supported networks</a><a href="/social-pay" onClick={() => setSiteMenuOpen(false)}>Social Pay <span>↗</span></a><a href="https://github.com/ExoDus768/Intent-pay#readme" target="_blank" rel="noreferrer" onClick={() => setSiteMenuOpen(false)}>Documentation <span>↗</span></a><a href="https://github.com/ExoDus768/Intent-pay" target="_blank" rel="noreferrer" onClick={() => setSiteMenuOpen(false)}>GitHub repository <span>↗</span></a><div className="follow-menu-wrap"><button type="button" className="follow-menu-trigger" aria-expanded={followMenuOpen} aria-haspopup="true" onClick={() => setFollowMenuOpen(open => !open)}>Follow Us <span>{followMenuOpen ? '⌃' : '›'}</span></button>{followMenuOpen && <div className="follow-submenu"><div className="follow-submenu-title">Follow IntentPay</div><a className="follow-link-placeholder" href="https://x.com/Intent_Payy" target="_blank" rel="noreferrer"><strong>Follow IntentPay on X</strong><small>@Intent_Payy ↗</small></a></div>}</div></div>}</div><a className="brand" href="#"><span className="brand-mark">I</span> IntentPay</a><div className="nav-right"><span className="status"><i />{health}</span><MerchantTools tokens={tokens} defaultRecipient={wallet || nearWallet} /><div className="wallet-menu-wrap" ref={walletMenuWrapRef}><button type="button" className="wallet-btn" onClick={() => setWalletMenuOpen(open => !open)} disabled={!!walletAction}>{walletAction === 'evm' ? 'Connecting EVM…' : walletAction === 'near' ? 'Opening NEAR…' : walletAction === 'walletconnect' ? 'Connecting…' : wallet || nearWallet ? short(wallet || nearWallet) : 'Connect Wallet'} <span aria-hidden="true">⌄</span></button>{walletMenuOpen && <div className="wallet-menu"><button type="button" onClick={() => { setWalletFeedback('Starting EVM connection…'); connectWallet(); }} disabled={walletAction === 'evm'}><strong>EVM Wallet</strong><small>MetaMask, Zerion and other EVM wallets</small>{wallet && <small>Connected: {short(wallet)}</small>}</button><button type="button" onClick={() => { setWalletFeedback('Starting NEAR connection…'); connectNearWallet(); }} disabled={walletAction === 'near'}><strong>NEAR Wallet</strong><small>MyNearWallet and supported NEAR wallets</small>{nearWallet && <small>Connected: {short(nearWallet)}</small>}</button><button type="button" onClick={() => { setWalletFeedback('Starting WalletConnect…'); connectWalletConnect(); }} disabled={walletAction === 'walletconnect'}><strong>WalletConnect</strong><small>Scan a QR code or open a compatible mobile wallet</small></button><div className="wallet-menu-feedback" role="status" aria-live="polite">{walletFeedback}</div></div>}</div></div></nav>
+    <nav className="nav"><div className="site-menu-wrap" ref={siteMenuWrapRef}><button type="button" className="hamburger-btn" aria-label="Open navigation menu" aria-expanded={siteMenuOpen} onClick={() => setSiteMenuOpen(open => !open)}><span></span><span></span><span></span></button>{siteMenuOpen && <div className="site-menu"><a href="/cross-chain" onClick={() => setSiteMenuOpen(false)}>Cross-chain payment <span>↗</span></a><a href="#how-it-works" onClick={() => setSiteMenuOpen(false)}>How it works</a><a href="#checkout" onClick={() => setSiteMenuOpen(false)}>Supported networks</a><a href="/social-pay" onClick={() => setSiteMenuOpen(false)}>Social Pay <span>↗</span></a><a href="https://github.com/ExoDus768/Intent-pay#readme" target="_blank" rel="noreferrer" onClick={() => setSiteMenuOpen(false)}>Documentation <span>↗</span></a><a href="https://github.com/ExoDus768/Intent-pay" target="_blank" rel="noreferrer" onClick={() => setSiteMenuOpen(false)}>GitHub repository <span>↗</span></a><div className="follow-menu-wrap"><button type="button" className="follow-menu-trigger" aria-expanded={followMenuOpen} aria-haspopup="true" onClick={() => setFollowMenuOpen(open => !open)}>Follow Us <span>{followMenuOpen ? '⌃' : '›'}</span></button>{followMenuOpen && <div className="follow-submenu"><div className="follow-submenu-title">Follow IntentPay</div><a className="follow-link-placeholder" href="https://x.com/Intent_Payy" target="_blank" rel="noreferrer"><strong>Follow IntentPay on X</strong><small>@Intent_Payy ↗</small></a></div>}</div></div>}</div><a className="brand" href="#"><span className="brand-mark">I</span> IntentPay</a><div className="nav-right"><span className="status"><i />{health}</span><MerchantTools tokens={tokens} defaultRecipient={wallet || nearWallet} /><div className="wallet-menu-wrap" ref={walletMenuWrapRef}><button type="button" className="wallet-btn" onClick={() => setWalletMenuOpen(open => !open)} disabled={!!walletAction}>{walletAction === 'evm' ? 'Connecting EVM…' : walletAction === 'near' ? 'Opening NEAR…' : walletAction === 'walletconnect' ? 'Connecting…' : wallet || nearWallet ? short(wallet || nearWallet) : 'Connect Wallet'} <span aria-hidden="true">⌄</span></button>{walletMenuOpen && <div className="wallet-menu"><button type="button" onClick={() => { setWalletFeedback('Starting EVM connection…'); connectWallet(); }} disabled={walletAction === 'evm'}><strong>EVM Wallet</strong><small>MetaMask, Zerion and other EVM wallets</small>{wallet && <small>Connected: {short(wallet)}</small>}</button><button type="button" onClick={() => { setWalletFeedback('Starting NEAR connection…'); connectNearWallet(); }} disabled={walletAction === 'near'}><strong>NEAR Wallet</strong><small>MyNearWallet and supported NEAR wallets</small>{nearWallet && <small>Connected: {short(nearWallet)}</small>}</button><button type="button" onClick={() => { setWalletFeedback('Starting WalletConnect…'); connectWalletConnect(); }} disabled={walletAction === 'walletconnect'}><strong>WalletConnect</strong><small>Scan a QR code or open a compatible mobile wallet</small></button><div className="wallet-menu-feedback" role="status" aria-live="polite">{walletFeedback}</div></div>}</div></div></nav>
     <section className="hero" id="how-it-works"><div className="eyebrow">CROSS-CHAIN CHECKOUT · POWERED BY NEAR INTENTS</div><h1>One checkout.<br/><span>Any supported chain.</span></h1><p>Customers pay from a supported network. Merchants receive their selected asset at their payout address.</p></section>
     <section className="checkout" id="checkout">{invoice && <div className="invoice-banner"><span className="eyebrow">PAYMENT INVOICE</span><strong>{invoice.amount} {invoice.symbol}</strong><p>{invoice.description || 'Merchant payment'} · Exact amount delivered to the merchant through NEAR Intents.</p></div>}{invoiceLoading && <p className="notice">Loading invoice details…</p>}
       <div className="checkout-head"><div><div className="eyebrow">MAINNET MERCHANT CHECKOUT</div><h2>Configure payment</h2></div><span className="mainnet-pill">MAINNET</span></div>
