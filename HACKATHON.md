@@ -25,7 +25,6 @@ The server keeps the 1Click JWT private. The browser never receives the API secr
 - **Customer Checkout (`/checkout`)**: view the merchant's payment configuration, choose a source asset, connect a wallet, review the live quote and approve payment.
 - **Cross-chain (`/cross-chain`)**: supporting swap experience.
 
-There is no merchant invoice creation, invoice dashboard, invoice storage, or invoice webhook system.
 
 ## Mainnet and wallet support
 
