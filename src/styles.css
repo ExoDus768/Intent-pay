@@ -196,3 +196,24 @@
 .widget-mode-check{display:grid;place-items:center;width:25px;height:25px;border-radius:8px;background:#202d45;color:#c9f6a5;font-size:14px;font-weight:800}
 .widget-mode-switch button.active .widget-mode-check{background:#a6f36a;color:#101a10}
 @media(max-width:380px){.widget-mode-switch{gap:7px}.widget-mode-switch button{padding:11px 9px;min-height:124px}.widget-mode-switch button.active{padding:10px 8px}.widget-mode-switch button strong{font-size:11px}}
+
+
+.customer-history{max-width:680px;margin:22px auto 0;padding:22px;background:#111a2c;border:1px solid #293754;border-radius:18px}
+.customer-history-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:16px}
+.customer-history-head h2{font:600 21px 'Space Grotesk';margin:7px 0 5px}
+.customer-history-head p,.history-empty{font-size:12px;line-height:1.6;color:#aab4cc;margin:0}
+.history-count{white-space:nowrap;border:1px solid #34415d;border-radius:20px;padding:7px 10px;color:#c9f6a5;font-size:11px}
+.history-empty{padding:18px;background:#0b1222;border-radius:10px}
+.history-list{display:grid;gap:10px}
+.history-item{padding:14px;background:#0b1222;border:1px solid #293754;border-radius:11px}
+.history-item-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.history-item-top>strong{font-size:13px;color:#f5f7ff}
+.history-status{font-size:10px;font-weight:700;letter-spacing:.4px;padding:5px 8px;border-radius:20px;background:#26344d;color:#cbd5e9}
+.history-status.status-success{background:#183522;color:#b9f58d}
+.history-status.status-failed,.history-status.status-refunded,.history-status.status-incomplete_deposit{background:#3b2529;color:#ffb6b6}
+.history-amount{display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin-top:12px;font-size:13px;font-weight:700;color:#f5f7ff}
+.history-amount span{color:#91a0bc}
+.history-route,.history-hash,.history-date{font-size:11px;color:#91a0bc;margin-top:7px;line-height:1.5}
+.history-hash code{color:#c9f6a5}
+.history-disclaimer{font-size:10px;line-height:1.5;color:#74829c;margin:13px 2px 0}
+@media(max-width:600px){.customer-history{padding:17px}.customer-history-head h2{font-size:19px}.history-item-top{align-items:flex-start}}
