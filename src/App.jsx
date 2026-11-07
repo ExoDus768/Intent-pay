@@ -679,11 +679,11 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
         setTxHash(hash);
         recordCurrentPayment('PROCESSING', hash, activeQuote);
         setNotice('NEAR transaction submitted. Notifying 1Click and checking settlement status…');
-        const submitted = await fetch('/api/deposit/submit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ txHash: hash, depositAddress, nearSenderAccount: nearWallet }) });
+        const submitted = await fetch('/api/deposit/submit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ txHash: hash, depositAddress, depositMemo: activeQuote.quote.depositMemo || undefined, nearSenderAccount: nearWallet }) });
         const submitData = await submitted.json();
         if (!submitted.ok) throw new Error(submitData.error || 'Deposit notification failed. The NEAR transaction may already be confirmed; check status before retrying.');
         for (let attempt = 0; attempt < 180; attempt++) {
-          const statusResponse = await fetch('/api/status?' + new URLSearchParams({ depositAddress }));
+          const statusResponse = await fetch('/api/status?' + new URLSearchParams({ depositAddress, depositMemo: activeQuote.quote.depositMemo || '' }));
           const statusData = await statusResponse.json();
           if (!statusResponse.ok) throw new Error(statusData.error || 'Could not read payment status.');
           setSwapStatus(statusData.status || 'UNKNOWN');
@@ -713,7 +713,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
       let network = await provider.getNetwork();
       if (Number(network.chainId) !== expectedChain) {
         await provider.send('wallet_switchEthereumChain', [{ chainId: '0x' + expectedChain.toString(16) }]);
-        provider = new BrowserProvider(window.ethereum);
+        provider = new BrowserProvider(injectedProvider);
         network = await provider.getNetwork();
       }
       if (Number(network.chainId) !== expectedChain) throw new Error('Your wallet is on the wrong network. Switch to the selected payment network.');
@@ -738,13 +738,13 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
       setNotice('Deposit confirmed. Notifying 1Click and checking settlement status…');
       const submitted = await fetch('/api/deposit/submit', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ txHash: tx.hash, depositAddress })
+        body: JSON.stringify({ txHash: tx.hash, depositAddress, depositMemo: activeQuote.quote.depositMemo || undefined })
       });
       const submitData = await submitted.json();
       if (!submitted.ok) throw new Error(submitData.error || 'Deposit notification failed. The chain transaction is confirmed; check status again.');
 
       for (let attempt = 0; attempt < 180; attempt++) {
-        const url = '/api/status?' + new URLSearchParams({ depositAddress });
+        const url = '/api/status?' + new URLSearchParams({ depositAddress, depositMemo: activeQuote.quote.depositMemo || '' });
         const statusResponse = await fetch(url);
         const statusData = await statusResponse.json();
         if (!statusResponse.ok) throw new Error(statusData.error || 'Could not read payment status.');
@@ -770,7 +770,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
     if (!quote?.quote?.depositAddress) return;
     setBusy(true);
     try {
-      const response = await fetch('/api/status?' + new URLSearchParams({ depositAddress: quote.quote.depositAddress }));
+      const response = await fetch('/api/status?' + new URLSearchParams({ depositAddress: quote.quote.depositAddress, depositMemo: quote.quote.depositMemo || '' }));
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Could not read status.');
       setSwapStatus(data.status || 'UNKNOWN');
