@@ -172,3 +172,14 @@
 .customer-checkout-shell .checkout{margin:38px auto 0}
 .customer-checkout-shell footer{max-width:680px;margin:24px auto 0}
 @media(max-width:600px){.merchant-page-wrapper{padding:16px 0 35px}.merchant-page-card{padding:17px}.customer-checkout-shell{padding:18px}.customer-checkout-shell .checkout{padding:19px;margin-top:24px}}
+
+
+/* Merchant checkout QR code */
+.widget-qr-card{display:grid;justify-items:center;gap:12px;padding:18px;background:#0b1222;border:1px solid #34415d;border-radius:12px;text-align:center}
+.widget-qr-card>div:first-child{width:100%}
+.widget-qr-card strong{font:600 16px 'Space Grotesk';color:#f5f7ff}
+.widget-qr-card p{max-width:390px;margin:6px auto 0;color:#91a0bc;font-size:11px;line-height:1.6}
+.widget-qr-image{display:block;width:min(100%,240px);height:auto;padding:9px;background:#fff;border-radius:10px;image-rendering:pixelated}
+.widget-qr-placeholder{display:grid;place-items:center;width:220px;min-height:100px;padding:16px;border:1px dashed #46536b;border-radius:10px;color:#91a0bc;font-size:11px}
+.widget-qr-download{display:inline-flex;justify-content:center;align-items:center;padding:11px 16px;border:1px solid #46536b;border-radius:9px;color:#c9f6a5;text-decoration:none;font-size:12px;font-weight:700}
+.widget-qr-download:hover{border-color:#a6f36a;background:#14251b}
