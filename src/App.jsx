@@ -86,8 +86,10 @@ export default function App() {
   const path = window.location.pathname;
   const invoiceId = new URLSearchParams(window.location.search).get('invoice');
   if (path.startsWith('/social-pay')) return <SocialPayPage />;
+  const checkoutParams = new URLSearchParams(window.location.search);
+  const isHostedWidgetCheckout = Boolean(checkoutParams.get('merchantAsset') && checkoutParams.get('merchantRecipient'));
   if (path === '/cross-chain' || path === '/cross-chain/') return <MerchantApp />;
-  if (invoiceId) return <MerchantApp />;
+  if (invoiceId || isHostedWidgetCheckout) return <MerchantApp />;
   return <HomePage />;
 }
 
