@@ -33,10 +33,23 @@ const usdToTokenAtomic = (usdAmount, token) => {
   const decimals = Number(token?.decimals);
   if (!Number.isFinite(usd) || usd <= 0) throw new Error('Enter a valid fixed USD amount.');
   if (!Number.isFinite(price) || price <= 0) throw new Error('A live USD price is not available for the merchant payout token. Choose another supported token and try again.');
-  if (!Number.isInteger(decimals) || decimals < 0) throw new Error('The selected payout token has invalid decimal precision.');
-  const tokenAmount = usd / price;
-  if (!Number.isFinite(tokenAmount) || tokenAmount <= 0) throw new Error('Could not convert the fixed USD price into the selected payout token.');
-  return parseUnits(tokenAmount.toFixed(Math.min(decimals, 18)), decimals).toString();
+  if (!Number.isInteger(decimals) || decimals < 0 || decimals > 255) throw new Error('The selected payout token has invalid decimal precision.');
+  const fraction = value => {
+    const [mantissa, exponentText] = String(value).toLowerCase().split('e');
+    const exponent = Number(exponentText || 0);
+    const [whole, fractional = ''] = mantissa.split('.');
+    const numerator = BigInt((whole + fractional).replace(/^0+(?=\\d)/, '') || '0');
+    const scale = fractional.length - exponent;
+    return scale >= 0
+      ? [numerator, 10n ** BigInt(scale)]
+      : [numerator * (10n ** BigInt(-scale)), 1n];
+  };
+  const [usdNumerator, usdDenominator] = fraction(usdAmount);
+  const [priceNumerator, priceDenominator] = fraction(token.price);
+  const numerator = usdNumerator * priceDenominator * (10n ** BigInt(decimals));
+  const denominator = usdDenominator * priceNumerator;
+  if (numerator <= 0n || denominator <= 0n) throw new Error('Could not convert the fixed USD price into the selected payout token.');
+  return ((numerator + denominator - 1n) / denominator).toString();
 };
 
 
