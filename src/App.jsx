@@ -6,6 +6,7 @@ import { setupMyNearWallet } from '@near-wallet-selector/my-near-wallet';
 import '@near-wallet-selector/modal-ui/styles.css';
 import { EthereumProvider } from '@walletconnect/ethereum-provider';
 import MerchantTools from './MerchantTools.jsx';
+import LandingPage from './LandingPage.jsx';
 
 const CHAIN_IDS = {
   eth: 1, ethereum: 1, base: 8453, arb: 42161, arbitrum: 42161,
@@ -36,7 +37,7 @@ export default function App() {
   if (path === '/merchant' || path === '/merchant/') return <MerchantApp merchantOnly />;
   if (path === '/checkout' || path === '/checkout/') return <MerchantApp checkoutOnly />;
   if (isHostedWidgetCheckout) return <MerchantApp checkoutOnly />;
-  return <MerchantApp merchantOnly />;
+  return <LandingPage />;
 }
 
 function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
