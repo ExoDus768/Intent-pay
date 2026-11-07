@@ -23,7 +23,9 @@
     "@near-wallet-selector/my-near-wallet": "^10.1.4",
     "@walletconnect/ethereum-provider": "^2.26.0",
     "@reown/appkit": "^1.8.24",
-    "qrcode": "^1.5.4"
+    "qrcode": "^1.5.4",
+    "@vercel/blob": "^2.3.1",
+    "@near-js/crypto": "^1.4.2"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.4",
