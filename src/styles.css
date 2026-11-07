@@ -183,3 +183,16 @@
 .widget-qr-placeholder{display:grid;place-items:center;width:220px;min-height:100px;padding:16px;border:1px dashed #46536b;border-radius:10px;color:#91a0bc;font-size:11px}
 .widget-qr-download{display:inline-flex;justify-content:center;align-items:center;padding:11px 16px;border:1px solid #46536b;border-radius:9px;color:#c9f6a5;text-decoration:none;font-size:12px;font-weight:700}
 .widget-qr-download:hover{border-color:#a6f36a;background:#14251b}
+
+
+/* Side-by-side selectable payment amount cards */
+.widget-mode-switch{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:2px 0 8px}
+.widget-mode-switch button{position:relative;display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-start;gap:7px;min-width:0;min-height:118px;padding:14px 12px;border:1px solid #3a4965;border-radius:12px;background:#0b1222;color:#e8eefb;text-align:left;cursor:pointer;transition:border-color .16s ease,background .16s ease,transform .16s ease,box-shadow .16s ease}
+.widget-mode-switch button:hover{border-color:#a6f36a;background:#14251b;transform:translateY(-2px);box-shadow:0 8px 22px #0004}
+.widget-mode-switch button:focus-visible{outline:2px solid #a6f36a;outline-offset:3px}
+.widget-mode-switch button.active{border:2px solid #a6f36a;padding:13px 11px;background:linear-gradient(145deg,#1b3524,#101d20);box-shadow:0 0 0 2px #a6f36a20}
+.widget-mode-switch button strong{font-size:12px;line-height:1.35;color:#f5f7ff}
+.widget-mode-switch button small{font-size:10px;line-height:1.45;color:#9eabc3}
+.widget-mode-check{display:grid;place-items:center;width:25px;height:25px;border-radius:8px;background:#202d45;color:#c9f6a5;font-size:14px;font-weight:800}
+.widget-mode-switch button.active .widget-mode-check{background:#a6f36a;color:#101a10}
+@media(max-width:380px){.widget-mode-switch{gap:7px}.widget-mode-switch button{padding:11px 9px;min-height:124px}.widget-mode-switch button.active{padding:10px 8px}.widget-mode-switch button strong{font-size:11px}}
