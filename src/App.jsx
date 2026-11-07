@@ -59,7 +59,7 @@ function HomePage() {
               <div className="preview-top"><span className="preview-brand"><b>I</b> intentpay</span><span className="preview-tag">UNIVERSAL CHECKOUT</span></div>
               <div className="preview-title">Pay with crypto</div>
               <p className="preview-subtitle">A merchant adds one button. IntentPay handles the checkout flow.</p>
-              <div className="preview-field"><span>INVOICE</span><strong>Merchant payment</strong></div>
+              <div className="preview-field"><span>PAYMENT</span><strong>Merchant payment</strong></div>
               <div className="preview-field"><span>PAY FROM</span><strong><i className="preview-coin">◈</i> Your wallet and network <small>⌄</small></strong></div>
               <div className="preview-field"><span>MERCHANT RECEIVES</span><strong><i className="preview-coin green">◎</i> Their selected asset</strong></div>
               <div className="preview-continue">Continue to checkout <span>→</span></div>
@@ -84,14 +84,13 @@ function HomePage() {
 
 export default function App() {
   const path = window.location.pathname;
-  const invoiceId = new URLSearchParams(window.location.search).get('invoice');
   if (path.startsWith('/social-pay')) return <SocialPayPage />;
   const checkoutParams = new URLSearchParams(window.location.search);
   const isHostedWidgetCheckout = Boolean(checkoutParams.get('merchantAsset') && checkoutParams.get('merchantRecipient'));
   if (path === '/merchant' || path === '/merchant/') return <MerchantApp merchantOnly />;
   if (path === '/checkout' || path === '/checkout/') return <MerchantApp checkoutOnly />;
   if (path === '/cross-chain' || path === '/cross-chain/') return <MerchantApp />;
-  if (invoiceId || isHostedWidgetCheckout) return <MerchantApp checkoutOnly />;
+  if (isHostedWidgetCheckout) return <MerchantApp checkoutOnly />;
   return <HomePage />;
 }
 
@@ -116,8 +115,6 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
   const [siteMenuOpen, setSiteMenuOpen] = useState(false);
   const [followMenuOpen, setFollowMenuOpen] = useState(false);
   const [merchantWorkspaceOpen, setMerchantWorkspaceOpen] = useState(new URLSearchParams(window.location.search).get('workspace') === 'merchant');
-  const [invoice, setInvoice] = useState(null);
-  const [invoiceLoading, setInvoiceLoading] = useState(Boolean(new URLSearchParams(window.location.search).get('invoice')));
   const [originChain, setOriginChain] = useState('');
   const [originAsset, setOriginAsset] = useState('');
   const [destinationChain, setDestinationChain] = useState('');
@@ -216,43 +213,11 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
 
   const origin = useMemo(() => tokens.find(t => tokenId(t) === originAsset), [tokens, originAsset]);
   const destination = useMemo(() => tokens.find(t => tokenId(t) === destinationAsset), [tokens, destinationAsset]);
-  const fixedOutputCheckout = Boolean(invoice || isFixedWidgetCheckout);
+  const fixedOutputCheckout = Boolean(isFixedWidgetCheckout);
   const estimateToken = fixedOutputCheckout ? destination : origin;
   const usdEstimate = amount && Number.isFinite(Number(amount)) && Number(amount) > 0 && Number.isFinite(Number(estimateToken?.price)) && Number(estimateToken?.price) > 0
     ? Number(amount) * Number(estimateToken.price)
     : null;
-  const invoiceId = useMemo(() => new URLSearchParams(window.location.search).get('invoice') || '', []);
-  useEffect(() => {
-    if (!isWidgetCheckout || !tokens.length) return;
-    const payout = tokens.find(t => t.assetId === merchantAssetParam);
-    if (!payout) { setNotice('This checkout link uses a payout asset that is not in the live NEAR Intents token registry.'); return; }
-    setDestinationChain(String(payout.blockchain || '').toLowerCase());
-    setDestinationAsset(payout.assetId);
-    setRecipient(merchantRecipientParam);
-    if (isFixedWidgetCheckout) setAmount(merchantAmountParam);
-    setNotice(isFixedWidgetCheckout ? 'Fixed-price merchant checkout loaded. Choose the asset you want to pay with.' : 'Merchant checkout loaded. Enter the amount and choose the asset you want to pay with.');
-  }, [isWidgetCheckout, tokens.length, merchantAssetParam, merchantRecipientParam, merchantAmountParam, isFixedWidgetCheckout]);
-  useEffect(() => {
-    if (!invoiceId) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const response = await fetch('/api/invoices/' + encodeURIComponent(invoiceId));
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || 'This payment link could not be loaded.');
-        if (cancelled) return;
-        setInvoice(data);
-        setDestinationChain(String(data.destinationChain || '').toLowerCase());
-        setDestinationAsset(data.destinationAsset);
-        setRecipient(data.recipient);
-        setAmount(data.amount);
-        setNotice('Invoice loaded. Choose the asset you want to pay with. The merchant will receive the exact invoice amount through NEAR Intents.');
-      } catch (error) {
-        if (!cancelled) setNotice(error.message || 'Could not load invoice.');
-      } finally { if (!cancelled) setInvoiceLoading(false); }
-    })();
-    return () => { cancelled = true; };
-  }, [invoiceId]);
   const origins = useMemo(() => tokens.filter(t => CHAIN_IDS[tokenChain(t)] || (isNearToken(t) && (t.contractAddress || t.assetId === 'nep141:wrap.near'))), [tokens]);
   const originChains = useMemo(() => [...new Set(origins.map(tokenChain))].sort((a, b) => chainLabel(a).localeCompare(chainLabel(b))), [origins]);
   const originTokens = useMemo(() => origins.filter(t => tokenChain(t) === originChain).sort((a, b) => tokenPriority(a) - tokenPriority(b) || String(a.symbol || '').localeCompare(String(b.symbol || ''))), [origins, originChain]);
@@ -469,7 +434,6 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
     setQuote(null); setGasEstimate(null); setTxHash(''); setSwapStatus('');
     if (isNearToken(origin || {}) ? !nearWallet : !wallet) return setNotice(isNearToken(origin || {}) ? 'Connect your NEAR wallet first. It will be used for refunds.' : 'Connect your EVM wallet first. The connected address is used for refunds.');
     if (!origin || !destination || !amount || Number(amount) <= 0 || !recipient.trim()) return setNotice('Complete the origin token, destination token, amount, and merchant payout address.');
-    if (invoice && (destination.assetId !== invoice.destinationAsset || recipient.toLowerCase() !== invoice.recipient.toLowerCase())) return setNotice('The invoice payout details cannot be changed.');
     if (recipient.startsWith('0x') && !isAddress(recipient)) return setNotice('The merchant EVM payout address is invalid.');
     if (!recipient.startsWith('0x') && !/^[a-z0-9._-]{2,64}$/i.test(recipient)) return setNotice('Enter a valid EVM address or NEAR account ID.');
     let atomicAmount;
@@ -489,7 +453,6 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
           refundTo: isNearToken(origin) ? nearWallet : wallet,
           nearSenderAccount: isNearToken(origin) ? nearWallet : undefined,
           swapType: fixedOutputCheckout ? 'EXACT_OUTPUT' : 'EXACT_INPUT',
-          invoiceId: invoice?.id,
           slippageTolerance: 100
         })
       });
@@ -535,7 +498,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
 
   useEffect(() => {
     const complete = Boolean(
-      configured && !invoiceLoading && origin && destination && amount && Number(amount) > 0 &&
+      configured && origin && destination && amount && Number(amount) > 0 &&
       recipient.trim() && (isNearToken(origin) ? nearWallet : wallet)
     );
     // Any changed checkout detail invalidates the old quote and requests a fresh one.
@@ -551,7 +514,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
       clearTimeout(timer);
       quoteRequestRef.current += 1;
     };
-  }, [configured, invoiceLoading, invoice?.id, originAsset, destinationAsset, amount, recipient, wallet, nearWallet, tokens]);
+  }, [configured, originAsset, destinationAsset, amount, recipient, wallet, nearWallet, tokens]);
 
   async function sendDeposit() {
     if (!quote?.quote?.depositAddress || !origin) return;
@@ -699,7 +662,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
     <nav className={checkoutOnly ? "nav customer-nav" : "nav"}><div className="site-menu-wrap" ref={siteMenuWrapRef}><button type="button" className="hamburger-btn" aria-label="Open navigation menu" aria-expanded={siteMenuOpen} onClick={() => setSiteMenuOpen(open => !open)}><span></span><span></span><span></span></button>{siteMenuOpen && <div className="site-menu"><button type="button" className="site-menu-primary" onClick={() => { setSiteMenuOpen(false); setMerchantWorkspaceOpen(true); }}><span><b>01</b> Merchant workspace</span><span>↗</span></button><a href="/cross-chain" onClick={() => setSiteMenuOpen(false)}>Cross-chain payment <span>↗</span></a><a href="#how-it-works" onClick={() => setSiteMenuOpen(false)}>How it works</a><a href="#checkout" onClick={() => setSiteMenuOpen(false)}>Supported networks</a><a href="/social-pay" onClick={() => setSiteMenuOpen(false)}>Social Pay <span>↗</span></a><a href="https://github.com/ExoDus768/Intent-pay#readme" target="_blank" rel="noreferrer" onClick={() => setSiteMenuOpen(false)}>Documentation <span>↗</span></a><a href="https://github.com/ExoDus768/Intent-pay" target="_blank" rel="noreferrer" onClick={() => setSiteMenuOpen(false)}>GitHub repository <span>↗</span></a><div className="follow-menu-wrap"><button type="button" className="follow-menu-trigger" aria-expanded={followMenuOpen} aria-haspopup="true" onClick={() => setFollowMenuOpen(open => !open)}>Follow Us <span>{followMenuOpen ? '⌃' : '›'}</span></button>{followMenuOpen && <div className="follow-submenu"><div className="follow-submenu-title">Follow IntentPay</div><a className="follow-link-placeholder" href="https://x.com/Intent_Payy" target="_blank" rel="noreferrer"><strong>Follow IntentPay on X</strong><small>@Intent_Payy ↗</small></a></div>}</div></div>}</div><a className="brand" href="#"><span className="brand-mark">I</span> IntentPay</a><div className="nav-right"><span className="status"><i />{health}</span><div className="wallet-menu-wrap" ref={walletMenuWrapRef}><button type="button" className="wallet-btn" onClick={() => setWalletMenuOpen(open => !open)} disabled={!!walletAction}>{walletAction === 'evm' ? 'Connecting EVM…' : walletAction === 'near' ? 'Opening NEAR…' : walletAction === 'walletconnect' ? 'Connecting…' : wallet || nearWallet ? short(wallet || nearWallet) : 'Connect Wallet'} <span aria-hidden="true">⌄</span></button>{walletMenuOpen && <div className="wallet-menu"><button type="button" onClick={() => { setWalletFeedback('Starting EVM connection…'); connectWallet(); }} disabled={walletAction === 'evm'}><strong>EVM Wallet</strong><small>MetaMask, Zerion and other EVM wallets</small>{wallet && <small>Connected: {short(wallet)}</small>}</button><button type="button" onClick={() => { setWalletFeedback('Starting NEAR connection…'); connectNearWallet(); }} disabled={walletAction === 'near'}><strong>NEAR Wallet</strong><small>MyNearWallet and supported NEAR wallets</small>{nearWallet && <small>Connected: {short(nearWallet)}</small>}</button><button type="button" onClick={() => { setWalletFeedback('Starting WalletConnect…'); connectWalletConnect(); }} disabled={walletAction === 'walletconnect'}><strong>WalletConnect</strong><small>Scan a QR code or open a compatible mobile wallet</small></button><div className="wallet-menu-feedback" role="status" aria-live="polite">{walletFeedback}</div></div>}</div></div></nav>
     {!checkoutOnly && <MerchantTools tokens={tokens} defaultRecipient={wallet || nearWallet} open={merchantWorkspaceOpen} onClose={() => setMerchantWorkspaceOpen(false)} />}
     {!checkoutOnly && <section className="hero" id="how-it-works"><div className="eyebrow">CROSS-CHAIN CHECKOUT · POWERED BY NEAR INTENTS</div><h1>One checkout.<br/><span>Any supported chain.</span></h1><p>Customers pay from a supported network. Merchants receive their selected asset at their payout address.</p></section>}
-    <section className="checkout" id="checkout">{(invoice || isWidgetCheckout) && <div className="invoice-banner"><span className="eyebrow">{checkoutOnly ? 'MERCHANT PAYMENT' : 'PAYMENT REQUEST'}</span><strong>{invoice ? invoice.amount + ' ' + invoice.symbol : (isFixedWidgetCheckout ? merchantAmountParam + ' ' + (destination?.symbol || '') : 'Variable amount')}</strong><p>{invoice?.description || checkoutParams.get('merchantName') || 'Merchant payment'} · {fixedOutputCheckout ? 'Exact payout amount delivered through NEAR Intents.' : 'Customer chooses the amount.'}</p></div>}{invoiceLoading && <p className="notice">Loading invoice details…</p>}
+    <section className="checkout" id="checkout">{isWidgetCheckout && <div className="checkout-banner"><span className="eyebrow">{checkoutOnly ? 'MERCHANT PAYMENT' : 'PAYMENT REQUEST'}</span><strong>{isFixedWidgetCheckout ? merchantAmountParam + ' ' + (destination?.symbol || '') : 'Variable amount'}</strong><p>{checkoutParams.get('merchantName') || 'Merchant payment'} · {fixedOutputCheckout ? 'Exact payout amount delivered through NEAR Intents.' : 'Customer chooses the amount.'}</p></div>}
       <div className="checkout-head"><div><div className="eyebrow">MAINNET SECURE CHECKOUT</div><h2>{checkoutOnly ? 'Complete payment' : 'Configure payment'}</h2></div><span className="mainnet-pill">MAINNET</span></div>
       <form onSubmit={e => e.preventDefault()}>
         <label>Customer pays with</label>
@@ -713,21 +676,21 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
           <option value="">{!originChain ? 'Choose a network first' : 'Select available token'}</option>
           {originTokens.map(t => <option key={t.assetId} value={t.assetId}>{t.symbol || 'TOKEN'}{t.name ? ' · ' + t.name : ''}</option>)}
         </select>
-        <label>{fixedOutputCheckout ? 'Merchant receives exactly' : 'Amount to pay'}</label><input type="number" min="0" step="any" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" required readOnly={Boolean(invoice || isFixedWidgetCheckout)} /><p className="helper-text">{usdEstimate !== null ? <>Estimated value: <strong>~ ${usdEstimate.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 4 })}</strong></> : amount && estimateToken ? 'USD estimate unavailable for this token right now.' : 'Enter an amount to see its approximate USD value.'}</p><p className="helper-text">Minimum swap: $0.01 USD equivalent, checked using live 1Click pricing.</p>{origin && !fixedOutputCheckout && <><p className="balance-line">{balanceLoading ? 'Checking wallet balance…' : originBalance !== '' ? <>Wallet balance: <strong>{Number(originBalance).toLocaleString(undefined, { maximumFractionDigits: 8 })} {origin.symbol}</strong></> : balanceError}</p><div className="percentage-row" aria-label="Select percentage of wallet balance">{[25, 50, 75, 100].map(percent => <button key={percent} type="button" className="percentage-btn" disabled={balanceLoading || originBalance === ''} onClick={() => { try { const units = parseUnits(originBalance, Number(origin.decimals || 0)); setAmount(formatUnits(units * BigInt(percent) / 100n, Number(origin.decimals || 0))); } catch { setNotice('Could not calculate this percentage. Check the selected asset balance.'); } }}>{percent === 100 ? 'MAX' : percent + '%'}</button>)}</div></>}
+        <label>{fixedOutputCheckout ? 'Merchant receives exactly' : 'Amount to pay'}</label><input type="number" min="0" step="any" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" required readOnly={Boolean(isFixedWidgetCheckout)} /><p className="helper-text">{usdEstimate !== null ? <>Estimated value: <strong>~ ${usdEstimate.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 4 })}</strong></> : amount && estimateToken ? 'USD estimate unavailable for this token right now.' : 'Enter an amount to see its approximate USD value.'}</p><p className="helper-text">Minimum swap: $0.01 USD equivalent, checked using live 1Click pricing.</p>{origin && !fixedOutputCheckout && <><p className="balance-line">{balanceLoading ? 'Checking wallet balance…' : originBalance !== '' ? <>Wallet balance: <strong>{Number(originBalance).toLocaleString(undefined, { maximumFractionDigits: 8 })} {origin.symbol}</strong></> : balanceError}</p><div className="percentage-row" aria-label="Select percentage of wallet balance">{[25, 50, 75, 100].map(percent => <button key={percent} type="button" className="percentage-btn" disabled={balanceLoading || originBalance === ''} onClick={() => { try { const units = parseUnits(originBalance, Number(origin.decimals || 0)); setAmount(formatUnits(units * BigInt(percent) / 100n, Number(origin.decimals || 0))); } catch { setNotice('Could not calculate this percentage. Check the selected asset balance.'); } }}>{percent === 100 ? 'MAX' : percent + '%'}</button>)}</div></>}
         <div className="section-rule"><span>MERCHANT RECEIVES</span></div>
         <label>Choose payout network</label>
-        <select value={destinationChain} onChange={e => { setDestinationChain(e.target.value); setDestinationAsset(''); }} required disabled={Boolean(invoice || isWidgetCheckout)}>
+        <select value={destinationChain} onChange={e => { setDestinationChain(e.target.value); setDestinationAsset(''); }} required disabled={Boolean(isWidgetCheckout)}>
           <option value="">Select merchant payout network</option>
           {destinationChains.map(chain => <option key={chain} value={chain}>{chainLabel(chain)}</option>)}
         </select>
         <label>Choose payout token</label>
-        <select value={destinationAsset} onChange={e => setDestinationAsset(e.target.value)} required disabled={Boolean(invoice || isWidgetCheckout) || !destinationChain || loadingTokens}>
+        <select value={destinationAsset} onChange={e => setDestinationAsset(e.target.value)} required disabled={Boolean(isWidgetCheckout) || !destinationChain || loadingTokens}>
           <option value="">{!destinationChain ? 'Choose a payout network first' : 'Select available payout token'}</option>
           {destinationTokens.map(t => <option key={t.assetId} value={t.assetId}>{t.symbol || 'TOKEN'}{t.name ? ' · ' + t.name : ''}</option>)}
         </select>
         {destinationChain && destinationTokens.length === 0 && <p className="warning">No payout tokens are currently listed for {chainLabel(destinationChain)} in the live NEAR Intents registry. Choose another network.</p>}
         {destinationChain && destinationTokens.length > 0 && !destinationTokens.some(t => String(t.symbol || '').toUpperCase() === 'USDT') && <p className="helper-text">USDT is not currently listed as a supported payout token on {chainLabel(destinationChain)} by NEAR Intents. Other listed tokens are shown above.</p>}
-        <label>{destinationIsNear ? 'Merchant NEAR account address' : 'Merchant EVM wallet address'}</label><input value={recipient} onChange={e => setRecipient(e.target.value)} placeholder={recipientPlaceholder} autoCapitalize="none" autoCorrect="off" spellCheck={false} required disabled={Boolean(invoice || isWidgetCheckout) || !destinationChain || !destinationAsset} /><p className="helper-text">{!destinationChain ? 'Choose a payout network and token first. The required address format will appear here.' : !destinationAsset ? 'Choose a payout token to see the correct merchant address format.' : destinationIsNear ? 'Enter the merchant’s NEAR account ID, for example merchant.near' : 'Enter the merchant’s EVM address for this network, starting with 0x'}</p>
+        <label>{destinationIsNear ? 'Merchant NEAR account address' : 'Merchant EVM wallet address'}</label><input value={recipient} onChange={e => setRecipient(e.target.value)} placeholder={recipientPlaceholder} autoCapitalize="none" autoCorrect="off" spellCheck={false} required disabled={Boolean(isWidgetCheckout) || !destinationChain || !destinationAsset} /><p className="helper-text">{!destinationChain ? 'Choose a payout network and token first. The required address format will appear here.' : !destinationAsset ? 'Choose a payout token to see the correct merchant address format.' : destinationIsNear ? 'Enter the merchant’s NEAR account ID, for example merchant.near' : 'Enter the merchant’s EVM address for this network, starting with 0x'}</p>
         <div className="refund-note">Refund address: {isNearToken(origin || {}) ? (nearWallet ? short(nearWallet) : 'Connect NEAR wallet') : (wallet ? short(wallet) : 'Connect EVM wallet')}</div>
         <div className="quote-auto-state" role="status">{busy ? 'Getting your quote…' : quote ? 'Quote ready. Review it below.' : 'Your quote will be generated automatically when all selections are complete.'}</div>
       </form>
