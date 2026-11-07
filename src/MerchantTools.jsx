@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import QRCode from 'qrcode';
 
 export default function MerchantTools({ open = false, onClose = () => {}, tokens = [], page = false }) {
   const [mode, setMode] = useState('variable');
@@ -10,6 +11,8 @@ export default function MerchantTools({ open = false, onClose = () => {}, tokens
   const [buttonLabel, setButtonLabel] = useState('Pay with crypto');
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
+  const [qrDataUrl, setQrDataUrl] = useState('');
+  const [qrError, setQrError] = useState('');
 
   const chainOf = t => String(t?.blockchain || '').trim().toLowerCase();
   const chains = useMemo(() => [...new Set(tokens.filter(t => t?.assetId && chainOf(t)).map(chainOf))].sort(), [tokens]);
@@ -34,6 +37,24 @@ export default function MerchantTools({ open = false, onClose = () => {}, tokens
   const embed = config
     ? '<button type="button" data-intentpay-checkout data-intentpay-url="' + config + '">' + buttonLabel.trim() + '</button>\n<script src="' + window.location.origin + '/intentpay.js" defer></script>'
     : '';
+
+  useEffect(() => {
+    let active = true;
+    setQrDataUrl('');
+    setQrError('');
+    if (!config) return () => { active = false; };
+    QRCode.toDataURL(config, {
+      width: 320,
+      margin: 2,
+      errorCorrectionLevel: 'H',
+      color: { dark: '#101a10', light: '#ffffff' }
+    }).then(dataUrl => {
+      if (active) setQrDataUrl(dataUrl);
+    }).catch(() => {
+      if (active) setQrError('QR code could not be generated. You can still copy the checkout link.');
+    });
+    return () => { active = false; };
+  }, [config]);
 
   async function copy(value, label) {
     try { await navigator.clipboard.writeText(value); setError(''); setNotice(label + ' copied.'); }
@@ -98,6 +119,14 @@ export default function MerchantTools({ open = false, onClose = () => {}, tokens
             <button type="button" className="primary" onClick={() => copy(embed, 'Embed code')}>Copy embed code</button>
             <label>Hosted checkout link</label>
             <div className="widget-direct-link"><code>{config}</code><button type="button" className="secondary" onClick={() => copy(config, 'Checkout link')}>Copy link</button></div>
+            <div className="widget-qr-card">
+              <div>
+                <strong>Scan to pay</strong>
+                <p>Customers can scan this QR code with their phone camera to open this exact checkout.</p>
+              </div>
+              {qrDataUrl ? <img className="widget-qr-image" src={qrDataUrl} alt="QR code for this IntentPay checkout link" /> : <div className="widget-qr-placeholder">{qrError || 'Generating QR code…'}</div>}
+              {qrDataUrl && <a className="widget-qr-download" href={qrDataUrl} download="intentpay-checkout-qr.png">Download QR code</a>}
+            </div>
           </>}
           {!ready && <p className="widget-setup-hint">Choose a payout network and token, enter your receiving wallet address, and complete the amount settings to generate your widget.</p>}
           <p className="merchant-hint">The button opens IntentPay's hosted mainnet checkout. Customers connect their own wallet, review the live NEAR Intents quote and network fee, then approve the payment. Your receiving address and payout asset are included in the public checkout link.</p>
