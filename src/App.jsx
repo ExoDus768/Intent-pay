@@ -87,7 +87,7 @@ export default function App() {
   if (path === '/checkout' || path === '/checkout/') return <MerchantApp checkoutOnly />;
   if (path === '/cross-chain' || path === '/cross-chain/') return <MerchantApp />;
   if (isHostedWidgetCheckout) return <MerchantApp checkoutOnly />;
-  return <HomePage />;
+  return <MerchantApp merchantOnly />;
 }
 
 function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
