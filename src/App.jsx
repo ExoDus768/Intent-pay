@@ -214,11 +214,22 @@ function MerchantApp() {
 
   const origin = useMemo(() => tokens.find(t => tokenId(t) === originAsset), [tokens, originAsset]);
   const destination = useMemo(() => tokens.find(t => tokenId(t) === destinationAsset), [tokens, destinationAsset]);
-  const fixedOutputCheckout = Boolean(invoice || isFixedWidgetCheckout);\n  const estimateToken = fixedOutputCheckout ? destination : origin;
+  const fixedOutputCheckout = Boolean(invoice || isFixedWidgetCheckout);
+  const estimateToken = fixedOutputCheckout ? destination : origin;
   const usdEstimate = amount && Number.isFinite(Number(amount)) && Number(amount) > 0 && Number.isFinite(Number(estimateToken?.price)) && Number(estimateToken?.price) > 0
     ? Number(amount) * Number(estimateToken.price)
     : null;
-  const invoiceId = useMemo(() => new URLSearchParams(window.location.search).get('invoice') || '', []);\n  useEffect(() => {\n    if (!isWidgetCheckout || !tokens.length) return;\n    const payout = tokens.find(t => t.assetId === merchantAssetParam);\n    if (!payout) { setNotice('This checkout link uses a payout asset that is not in the live NEAR Intents token registry.'); return; }\n    setDestinationChain(String(payout.blockchain || '').toLowerCase());\n    setDestinationAsset(payout.assetId);\n    setRecipient(merchantRecipientParam);\n    if (isFixedWidgetCheckout) setAmount(merchantAmountParam);\n    setNotice(isFixedWidgetCheckout ? 'Fixed-price merchant checkout loaded. Choose the asset you want to pay with.' : 'Merchant checkout loaded. Enter the amount and choose the asset you want to pay with.');\n  }, [isWidgetCheckout, tokens.length, merchantAssetParam, merchantRecipientParam, merchantAmountParam, isFixedWidgetCheckout]);
+  const invoiceId = useMemo(() => new URLSearchParams(window.location.search).get('invoice') || '', []);
+  useEffect(() => {
+    if (!isWidgetCheckout || !tokens.length) return;
+    const payout = tokens.find(t => t.assetId === merchantAssetParam);
+    if (!payout) { setNotice('This checkout link uses a payout asset that is not in the live NEAR Intents token registry.'); return; }
+    setDestinationChain(String(payout.blockchain || '').toLowerCase());
+    setDestinationAsset(payout.assetId);
+    setRecipient(merchantRecipientParam);
+    if (isFixedWidgetCheckout) setAmount(merchantAmountParam);
+    setNotice(isFixedWidgetCheckout ? 'Fixed-price merchant checkout loaded. Choose the asset you want to pay with.' : 'Merchant checkout loaded. Enter the amount and choose the asset you want to pay with.');
+  }, [isWidgetCheckout, tokens.length, merchantAssetParam, merchantRecipientParam, merchantAmountParam, isFixedWidgetCheckout]);
   useEffect(() => {
     if (!invoiceId) return;
     let cancelled = false;
