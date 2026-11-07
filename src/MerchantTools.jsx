@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 
-export default function MerchantTools({ open = false, onClose = () => {}, tokens = [] }) {
+export default function MerchantTools({ open = false, onClose = () => {}, tokens = [], page = false }) {
   const [mode, setMode] = useState('variable');
   const [merchantName, setMerchantName] = useState('');
   const [destinationChain, setDestinationChain] = useState('');
@@ -29,7 +29,7 @@ export default function MerchantTools({ open = false, onClose = () => {}, tokens
       merchantName: merchantName.trim().slice(0, 80),
       ...(mode === 'fixed' ? { merchantAmount: fixedAmount } : {})
     });
-    return window.location.origin + '/?' + params.toString();
+    return window.location.origin + '/checkout?' + params.toString();
   }, [ready, destinationAsset, recipient, merchantName, mode, fixedAmount]);
   const embed = config
     ? '<button type="button" data-intentpay-checkout data-intentpay-url="' + config + '">' + buttonLabel.trim() + '</button>\\n<script src="' + window.location.origin + '/intentpay.js" defer></script>'
@@ -40,13 +40,13 @@ export default function MerchantTools({ open = false, onClose = () => {}, tokens
     catch { setNotice(''); setError('Clipboard access was blocked. Select and copy the value manually.'); }
   }
 
-  if (!open) return null;
+  if (!open && !page) return null;
   return (
-    <div className="merchant-overlay" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
-      <section className="merchant-modal" role="dialog" aria-modal="true" aria-labelledby="merchant-title">
+    <div className={page ? "merchant-page-wrapper" : "merchant-overlay"} role="presentation" onMouseDown={event => { if (!page && event.target === event.currentTarget) onClose(); }}>
+      <section className={page ? "merchant-modal merchant-page-card" : "merchant-modal"} role="dialog" aria-modal="true" aria-labelledby="merchant-title">
         <div className="merchant-modal-head">
-          <div><div className="eyebrow">INTENTPAY · UNIVERSAL CHECKOUT</div><h2 id="merchant-title">Checkout workspace</h2></div>
-          <button type="button" className="merchant-close" aria-label="Close checkout workspace" onClick={onClose}>×</button>
+          <div><div className="eyebrow">INTENTPAY · UNIVERSAL CHECKOUT</div><h2 id="merchant-title">{page ? 'Merchant workspace' : 'Checkout workspace'}</h2></div>
+          <button type="button" className="merchant-close" aria-label={page ? "Return home" : "Close checkout workspace"} onClick={onClose}>{page ? '←' : '×'}</button>
         </div>
         <div className="merchant-widget-panel">
           <div className="widget-intro">
