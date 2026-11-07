@@ -4,7 +4,7 @@
 
 IntentPay is a universal crypto checkout built around **NEAR Intents and the 1Click API**. Any merchant or app can publish a checkout button. Customers open a hosted checkout and pay from a supported wallet and network, while the merchant receives their configured payout asset at their receiving address.
 
-The core project is the universal checkout widget. Cross-chain swapping is a supporting feature, not a separate bridge or solver.
+The project is focused entirely on the universal checkout widget. Customers choose a supported payment asset and merchants receive their configured payout asset through the checkout flow.
 
 ## NEAR Intents integration
 
