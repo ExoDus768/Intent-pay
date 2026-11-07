@@ -27,7 +27,83 @@ const tokenPriority = t => { const i = TOKEN_PRIORITY.indexOf(String(t.symbol ||
 const short = (value = '') => value.length > 24 ? value.slice(0, 10) + '…' + value.slice(-8) : value;
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 
+
+function LandingPage() {
+  return (
+    <div className="landing-shell">
+      <header className="landing-nav">
+        <a className="landing-brand" href="/" aria-label="IntentPay home">
+          <span className="landing-brand-mark">I</span>
+          <span>intent<span>pay</span></span>
+        </a>
+        <nav className="landing-nav-links">
+          <a href="#features">Features</a>
+          <a href="https://x.com/Exo_Dus7" target="_blank" rel="noreferrer">Our X community ↗</a>
+          <a className="landing-nav-cta" href="/merchant">Try it now <span>↗</span></a>
+        </nav>
+      </header>
+
+      <main>
+        <section className="landing-hero">
+          <div className="landing-copy">
+            <div className="landing-eyebrow"><span></span> CROSS-CHAIN PAYMENTS, MADE SIMPLE</div>
+            <h1>One checkout.<br /><em>More ways to pay.</em></h1>
+            <p>IntentPay helps people pay with supported crypto assets across multiple networks, while merchants receive funds in the asset and chain they choose. No need to make the payment experience feel complicated.</p>
+            <div className="landing-actions">
+              <a className="landing-primary" href="/merchant">Try it now <span>↗</span></a>
+              <a className="landing-secondary" href="#features">Explore features</a>
+            </div>
+            <div className="landing-trust"><span className="landing-dot"></span> Powered by NEAR Intents · Built for cross-chain checkout</div>
+          </div>
+
+          <div className="landing-preview-wrap">
+            <div className="landing-glow"></div>
+            <div className="landing-preview">
+              <div className="preview-top"><span className="preview-brand"><b>I</b> intentpay</span><span className="preview-tag">MERCHANT CHECKOUT</span></div>
+              <div className="preview-title">Pay your way.</div>
+              <p className="preview-subtitle">Choose a network and asset that works for you.</p>
+              <div className="preview-field"><span>PAY FROM</span><strong><i className="preview-coin">◈</i> Select network and token <small>⌄</small></strong></div>
+              <div className="preview-field"><span>AMOUNT</span><strong>Enter amount <small>USD estimate shown</small></strong></div>
+              <div className="preview-field"><span>MERCHANT RECEIVES</span><strong><i className="preview-coin green">◎</i> Selected payout asset <small>⌄</small></strong></div>
+              <div className="preview-continue">Continue to payment <span>→</span></div>
+              <div className="preview-foot">Secure wallet approval · Live route quote</div>
+            </div>
+            <div className="preview-float"><span>↗</span><div><b>Cross-chain</b><small>One simple checkout</small></div></div>
+          </div>
+        </section>
+
+        <section className="landing-x-callout">
+          <div className="x-mark">𝕏</div>
+          <div><strong>A shout-out to the X community.</strong><p>To everyone following the build, sharing feedback and supporting a more connected payment experience — thank you. We're building in the open, one improvement at a time.</p></div>
+          <a href="https://x.com/Exo_Dus7" target="_blank" rel="noreferrer">Follow the journey ↗</a>
+        </section>
+
+        <section className="landing-features" id="features">
+          <div className="landing-section-heading"><span>WHAT INTENTPAY BRINGS</span><h2>Payments without the usual friction.</h2><p>A straightforward checkout experience for customers, with practical tools for merchants.</p></div>
+          <div className="landing-feature-grid">
+            <article className="landing-feature"><div className="feature-icon">⌘</div><h3>Cross-chain checkout</h3><p>Customers can pay using supported assets from supported networks, with routing handled through NEAR Intents and 1Click.</p></article>
+            <article className="landing-feature"><div className="feature-icon">◎</div><h3>Wallet-first payments</h3><p>Connect a compatible EVM or NEAR wallet and review the quote before approving a payment from your wallet.</p></article>
+            <article className="landing-feature"><div className="feature-icon">↗</div><h3>Live quotes and estimates</h3><p>See the expected receive amount, an approximate USD value and available route details before confirming.</p></article>
+            <article className="landing-feature"><div className="feature-icon">▤</div><h3>Merchant tools</h3><p>Create payment requests and invoices, share checkout links, and keep track of payment activity from the merchant tools.</p></article>
+          </div>
+        </section>
+
+        <section className="landing-bottom-cta">
+          <div><span>READY TO TAKE A LOOK?</span><h2>See the merchant checkout in action.</h2><p>Open the IntentPay merchant site and explore the payment experience.</p></div>
+          <a className="landing-primary" href="/merchant">Try it now <span>↗</span></a>
+        </section>
+      </main>
+      <footer className="landing-footer"><a className="landing-brand" href="/"><span className="landing-brand-mark">I</span><span>intent<span>pay</span></span></a><span>Cross-chain payments, made simpler.</span><a href="https://x.com/Exo_Dus7" target="_blank" rel="noreferrer">Follow on X ↗</a></footer>
+    </div>
+  );
+}
+
 export default function App() {
+  const isMerchantPage = window.location.pathname.startsWith('/merchant') || new URLSearchParams(window.location.search).has('invoice');
+  return isMerchantPage ? <MerchantApp /> : <LandingPage />;
+}
+
+function MerchantApp() {
   const [health, setHealth] = useState('Checking service…');
   const [configured, setConfigured] = useState(false);
   const [tokens, setTokens] = useState([]);
