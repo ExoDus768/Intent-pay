@@ -27,6 +27,17 @@ const TOKEN_PRIORITY = ['USDC','USDT','ETH','NEAR','DAI','WETH','WBTC','USDBC','
 const tokenPriority = t => { const i = TOKEN_PRIORITY.indexOf(String(t.symbol || '').toUpperCase()); return i < 0 ? TOKEN_PRIORITY.length : i; };
 const short = (value = '') => value.length > 24 ? value.slice(0, 10) + '…' + value.slice(-8) : value;
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+const usdToTokenAtomic = (usdAmount, token) => {
+  const usd = Number(usdAmount);
+  const price = Number(token?.price);
+  const decimals = Number(token?.decimals);
+  if (!Number.isFinite(usd) || usd <= 0) throw new Error('Enter a valid fixed USD amount.');
+  if (!Number.isFinite(price) || price <= 0) throw new Error('A live USD price is not available for the merchant payout token. Choose another supported token and try again.');
+  if (!Number.isInteger(decimals) || decimals < 0) throw new Error('The selected payout token has invalid decimal precision.');
+  const tokenAmount = usd / price;
+  if (!Number.isFinite(tokenAmount) || tokenAmount <= 0) throw new Error('Could not convert the fixed USD price into the selected payout token.');
+  return parseUnits(tokenAmount.toFixed(Math.min(decimals, 18)), decimals).toString();
+};
 
 
 
@@ -44,7 +55,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
   const checkoutParams = new URLSearchParams(window.location.search);
   const merchantAssetParam = checkoutParams.get('merchantAsset') || '';
   const merchantRecipientParam = checkoutParams.get('merchantRecipient') || '';
-  const merchantAmountParam = checkoutParams.get('merchantAmount') || '';
+  const merchantAmountParam = checkoutParams.get('merchantAmountUsd') || checkoutParams.get('merchantAmount') || '';
   const isWidgetCheckout = Boolean(merchantAssetParam && merchantRecipientParam);
   const isFixedWidgetCheckout = isWidgetCheckout && Boolean(merchantAmountParam && Number(merchantAmountParam) > 0);
   const [health, setHealth] = useState('Checking service…');
@@ -302,8 +313,8 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
   }, [isWidgetCheckout, merchantAssetParam, tokens]);
   const fixedOutputCheckout = Boolean(isFixedWidgetCheckout);
   const estimateToken = fixedOutputCheckout ? destination : origin;
-  const usdEstimate = amount && Number.isFinite(Number(amount)) && Number(amount) > 0 && Number.isFinite(Number(estimateToken?.price)) && Number(estimateToken?.price) > 0
-    ? Number(amount) * Number(estimateToken.price)
+  const usdEstimate = amount && Number.isFinite(Number(amount)) && Number(amount) > 0
+    ? (fixedOutputCheckout ? Number(amount) : (Number.isFinite(Number(origin?.price)) && Number(origin.price) > 0 ? Number(amount) * Number(origin.price) : null))
     : null;
   const origins = useMemo(() => tokens.filter(t => CHAIN_IDS[tokenChain(t)] || (isNearToken(t) && (t.contractAddress || t.assetId === 'nep141:wrap.near'))), [tokens]);
   const originChains = useMemo(() => [...new Set(origins.map(tokenChain))].sort((a, b) => chainLabel(a).localeCompare(chainLabel(b))), [origins]);
@@ -529,8 +540,8 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
     if (recipient.startsWith('0x') && !isAddress(recipient)) return setNotice('The merchant EVM payout address is invalid.');
     if (!recipient.startsWith('0x') && !/^[a-z0-9._-]{2,64}$/i.test(recipient)) return setNotice('Enter a valid EVM address or NEAR account ID.');
     let atomicAmount;
-    try { atomicAmount = parseUnits(amount, Number(fixedOutputCheckout ? destination.decimals : origin.decimals)).toString(); }
-    catch { return setNotice('The amount has too many decimal places for the selected token.'); }
+    try { atomicAmount = fixedOutputCheckout ? usdToTokenAtomic(amount, destination) : parseUnits(amount, Number(origin.decimals)).toString(); }
+    catch (error) { return setNotice(error.message || 'The amount could not be converted for the selected token.'); }
 
     setBusy(true);
     setNotice('Checking this payment route with a 1Click preview…');
@@ -623,7 +634,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
           body: JSON.stringify({
             originAsset: origin.assetId,
             destinationAsset: destination.assetId,
-            amount: parseUnits(amount, Number(fixedOutputCheckout ? destination.decimals : origin.decimals)).toString(),
+            amount: fixedOutputCheckout ? usdToTokenAtomic(amount, destination) : parseUnits(amount, Number(origin.decimals)).toString(),
             recipient: recipient.trim(),
             refundTo: isNearToken(origin) ? nearWallet : wallet,
             nearSenderAccount: isNearToken(origin) ? nearWallet : undefined,
@@ -817,8 +828,8 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
           </optgroup>)}
         </select>
         {originSearch && filteredOriginTokens.length === 0 && <p className="warning">No supported token matches “{originSearch}”. Try another token name or network.</p>}
-        {origin && <p className="helper-text">Selected: <strong>{origin.symbol} on {chainLabel(tokenChain(origin))}</strong></p>}
-        <label>{fixedOutputCheckout ? 'Merchant receives exactly' : 'Amount to pay'}</label><input type="number" min="0" step="any" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" required readOnly={Boolean(isFixedWidgetCheckout)} /><p className="helper-text">{usdEstimate !== null ? <>Estimated value: <strong>~ ${usdEstimate.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 4 })}</strong></> : amount && estimateToken ? 'USD estimate unavailable for this token right now.' : 'Enter an amount to see its approximate USD value.'}</p><p className="helper-text">Minimum payment: $0.01 USD equivalent, checked using live 1Click pricing.</p>{origin && !fixedOutputCheckout && <><p className="balance-line">{balanceLoading ? 'Checking wallet balance…' : originBalance !== '' ? <>Wallet balance: <strong>{Number(originBalance).toLocaleString(undefined, { maximumFractionDigits: 8 })} {origin.symbol}</strong></> : balanceError}</p><div className="percentage-row" aria-label="Select percentage of wallet balance">{[25, 50, 75, 100].map(percent => <button key={percent} type="button" className="percentage-btn" disabled={balanceLoading || originBalance === ''} onClick={() => { try { const units = parseUnits(originBalance, Number(origin.decimals || 0)); setAmount(formatUnits(units * BigInt(percent) / 100n, Number(origin.decimals || 0))); } catch { setNotice('Could not calculate this percentage. Check the selected asset balance.'); } }}>{percent === 100 ? 'MAX' : percent + '%'}</button>)}</div></>}
+        {origin && <p className="helper-text">Selected: <strong>{origin.symbol} on {chainLabel(tokenChain(origin))}</strong>{Number(origin.price) > 0 ? <> · 1 {origin.symbol} ≈ ${Number(origin.price).toLocaleString(undefined, { maximumFractionDigits: 6 })} USD</> : ' · Live USD price unavailable'}</p>}
+        <label>{fixedOutputCheckout ? 'Fixed checkout price (USD)' : 'Amount to pay'}</label><input type="number" min="0" step="any" value={amount} onChange={e => setAmount(e.target.value)} placeholder={fixedOutputCheckout ? 'e.g. 25.00 USD' : '0.00'} required readOnly={Boolean(isFixedWidgetCheckout)} /><p className="helper-text">{fixedOutputCheckout ? <>This checkout is fixed at <strong>${Number(amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD</strong>. IntentPay converts that value into the merchant's payout token and quotes the amount you need to pay in your selected wallet token.</> : usdEstimate !== null ? <>Estimated value: <strong>~ ${usdEstimate.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 4 })}</strong></> : amount && origin ? 'USD estimate unavailable for this token right now.' : 'Enter an amount to see its approximate USD value.'}</p><p className="helper-text">Minimum payment: $0.01 USD equivalent, checked using live 1Click pricing.</p>{origin && !fixedOutputCheckout && <><p className="balance-line">{balanceLoading ? 'Checking wallet balance…' : originBalance !== '' ? <>Wallet balance: <strong>{Number(originBalance).toLocaleString(undefined, { maximumFractionDigits: 8 })} {origin.symbol}</strong></> : balanceError}</p><div className="percentage-row" aria-label="Select percentage of wallet balance">{[25, 50, 75, 100].map(percent => <button key={percent} type="button" className="percentage-btn" disabled={balanceLoading || originBalance === ''} onClick={() => { try { const units = parseUnits(originBalance, Number(origin.decimals || 0)); setAmount(formatUnits(units * BigInt(percent) / 100n, Number(origin.decimals || 0))); } catch { setNotice('Could not calculate this percentage. Check the selected asset balance.'); } }}>{percent === 100 ? 'MAX' : percent + '%'}</button>)}</div></>}
         <div className="section-rule"><span>MERCHANT RECEIVES</span></div>
         <label>Choose payout network</label>
         <select value={destinationChain} onChange={e => { setDestinationChain(e.target.value); setDestinationAsset(''); }} required disabled={Boolean(isWidgetCheckout)}>
@@ -839,7 +850,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
       {!configured && <p className="warning">Mainnet payments are locked until the server has a valid 1Click JWT. Add it as a Vercel server environment variable. Never paste it into this page.</p>}
       <p className="notice">{notice}</p>
       {quote?.quote && <div className="quote-card">
-        <div className="quote-title">Mainnet quote details</div>{fixedOutputCheckout && <p className="helper-text">Fixed-output checkout · NEAR Intents calculates the input amount required to deliver the exact merchant amount.</p>}
+        <div className="quote-title">Mainnet quote details</div>{fixedOutputCheckout && <p className="helper-text">Fixed USD checkout · target price ${Number(amount).toFixed(2)} USD. NEAR Intents calculates the input amount required to deliver the merchant's selected payout token at this value.</p>}
         <div className="quote-row"><span>Pay</span><strong>{quote.quote.amountInFormatted || formatUnits(quote.quote.amountIn, Number(origin?.decimals || 0))} {origin?.symbol}</strong></div>
         <div className="quote-row"><span>Estimated receive</span><strong>{(quote.quote.amountOutFormatted || quote.quote.amountOut) + ' ' + destination?.symbol}</strong></div>
         {quote.quote.amountInUsd && <div className="quote-row"><span>Payment value</span><strong>${Number(quote.quote.amountInUsd).toFixed(4)} USD</strong></div>}
