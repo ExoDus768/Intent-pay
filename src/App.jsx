@@ -131,51 +131,6 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
   const [customerHistory, setCustomerHistory] = useState([]);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('Connect your EVM or NEAR mainnet wallet, choose the asset you will pay with, and set the merchant payout details.');
-  const customerAccount = isNearToken(origin || {}) ? nearWallet : wallet;
-  const historyStorageKey = customerAccount ? 'intentpay_customer_history_' + customerAccount.toLowerCase() : '';
-  useEffect(() => {
-    if (!historyStorageKey) { setCustomerHistory([]); return; }
-    try {
-      const saved = JSON.parse(localStorage.getItem(historyStorageKey) || '[]');
-      setCustomerHistory(Array.isArray(saved) ? saved : []);
-    } catch { setCustomerHistory([]); }
-  }, [historyStorageKey]);
-
-  function saveCustomerHistory(entry) {
-    const account = entry.account || customerAccount;
-    if (!account) return;
-    const key = 'intentpay_customer_history_' + account.toLowerCase();
-    try {
-      const previous = JSON.parse(localStorage.getItem(key) || '[]');
-      const rows = Array.isArray(previous) ? previous : [];
-      const index = rows.findIndex(row => row.id === entry.id);
-      const next = index >= 0
-        ? rows.map((row, i) => i === index ? { ...row, ...entry, updatedAt: new Date().toISOString() } : row)
-        : [{ ...entry, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }, ...rows];
-      localStorage.setItem(key, JSON.stringify(next.slice(0, 100)));
-      if (account.toLowerCase() === customerAccount.toLowerCase()) setCustomerHistory(next.slice(0, 100));
-    } catch { setNotice('Payment submitted, but this browser could not save the local transaction history.'); }
-  }
-
-  function recordCurrentPayment(status, hash = txHash) {
-    if (!quote?.quote?.depositAddress || !origin || !destination || !customerAccount) return;
-    saveCustomerHistory({
-      id: quote.quote.depositAddress,
-      account: customerAccount,
-      merchant: checkoutParams.get('merchantName') || 'Merchant payment',
-      sourceNetwork: chainLabel(tokenChain(origin)),
-      sourceToken: origin.symbol || 'TOKEN',
-      destinationNetwork: chainLabel(tokenChain(destination)),
-      destinationToken: destination.symbol || 'TOKEN',
-      amountPaid: quote.quote.amountInFormatted || formatUnits(quote.quote.amountIn, Number(origin.decimals || 0)),
-      amountReceived: quote.quote.amountOutFormatted || formatUnits(quote.quote.amountOut, Number(destination.decimals || 0)),
-      transactionHash: hash || '',
-      depositAddress: quote.quote.depositAddress,
-      status: status || 'PROCESSING',
-      fixedAmount: Boolean(isFixedWidgetCheckout)
-    });
-  }
-
   const quoteRequestRef = useRef(0);
   const evmProvidersRef = useRef([]);
   const activeEvmProviderRef = useRef(null);
@@ -259,6 +214,51 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
 
   const origin = useMemo(() => tokens.find(t => tokenId(t) === originAsset), [tokens, originAsset]);
   const destination = useMemo(() => tokens.find(t => tokenId(t) === destinationAsset), [tokens, destinationAsset]);
+  const customerAccount = isNearToken(origin || {}) ? nearWallet : wallet;
+  const historyStorageKey = customerAccount ? 'intentpay_customer_history_' + customerAccount.toLowerCase() : '';
+  useEffect(() => {
+    if (!historyStorageKey) { setCustomerHistory([]); return; }
+    try {
+      const saved = JSON.parse(localStorage.getItem(historyStorageKey) || '[]');
+      setCustomerHistory(Array.isArray(saved) ? saved : []);
+    } catch { setCustomerHistory([]); }
+  }, [historyStorageKey]);
+
+  function saveCustomerHistory(entry) {
+    const account = entry.account || customerAccount;
+    if (!account) return;
+    const key = 'intentpay_customer_history_' + account.toLowerCase();
+    try {
+      const previous = JSON.parse(localStorage.getItem(key) || '[]');
+      const rows = Array.isArray(previous) ? previous : [];
+      const index = rows.findIndex(row => row.id === entry.id);
+      const next = index >= 0
+        ? rows.map((row, i) => i === index ? { ...row, ...entry, updatedAt: new Date().toISOString() } : row)
+        : [{ ...entry, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }, ...rows];
+      localStorage.setItem(key, JSON.stringify(next.slice(0, 100)));
+      if (account.toLowerCase() === customerAccount.toLowerCase()) setCustomerHistory(next.slice(0, 100));
+    } catch { setNotice('Payment submitted, but this browser could not save the local transaction history.'); }
+  }
+
+  function recordCurrentPayment(status, hash = txHash) {
+    if (!quote?.quote?.depositAddress || !origin || !destination || !customerAccount) return;
+    saveCustomerHistory({
+      id: quote.quote.depositAddress,
+      account: customerAccount,
+      merchant: checkoutParams.get('merchantName') || 'Merchant payment',
+      sourceNetwork: chainLabel(tokenChain(origin)),
+      sourceToken: origin.symbol || 'TOKEN',
+      destinationNetwork: chainLabel(tokenChain(destination)),
+      destinationToken: destination.symbol || 'TOKEN',
+      amountPaid: quote.quote.amountInFormatted || formatUnits(quote.quote.amountIn, Number(origin.decimals || 0)),
+      amountReceived: quote.quote.amountOutFormatted || formatUnits(quote.quote.amountOut, Number(destination.decimals || 0)),
+      transactionHash: hash || '',
+      depositAddress: quote.quote.depositAddress,
+      status: status || 'PROCESSING',
+      fixedAmount: Boolean(isFixedWidgetCheckout)
+    });
+  }
+
   // Hosted widget links carry the merchant's payout asset. Resolve its network
   // from the live registry so the customer checkout displays the merchant's
   // configured network and token without asking the customer to select them.
