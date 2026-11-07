@@ -119,7 +119,7 @@ export default function MerchantTools({ open = false, onClose = () => {}, tokens
           <div className="widget-preview">
             <span className="widget-preview-label">BUTTON PREVIEW</span>
             <button type="button" className="widget-preview-button" disabled={!ready || !buttonLabel.trim()} onClick={() => window.open(config, '_blank', 'noopener,noreferrer')}>{buttonLabel || 'Pay with crypto'} <span>↗</span></button>
-            <small>{mode === 'fixed' ? 'Fixed price: 
+            <small>{mode === 'fixed' ? ("Fixed price: $" + (fixedAmount || '—') + " USD" + (fixedTokenEstimate !== null ? " · approx. " + fixedTokenEstimate.toLocaleString(undefined, { maximumFractionDigits: 8 }) + " " + selected.symbol : "")) : "Customer chooses the payment amount"} · Preview opens checkout only; it does not pay.</small>
           </div>
 
           {ready && <>
