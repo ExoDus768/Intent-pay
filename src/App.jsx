@@ -38,7 +38,7 @@ const usdToTokenAtomic = (usdAmount, token) => {
     const [mantissa, exponentText] = String(value).toLowerCase().split('e');
     const exponent = Number(exponentText || 0);
     const [whole, fractional = ''] = mantissa.split('.');
-    const numerator = BigInt((whole + fractional).replace(/^0+(?=\\d)/, '') || '0');
+    const numerator = BigInt(whole + fractional);
     const scale = fractional.length - exponent;
     return scale >= 0
       ? [numerator, 10n ** BigInt(scale)]
