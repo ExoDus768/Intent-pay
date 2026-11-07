@@ -57,7 +57,7 @@ See [README.md](./README.md) and [docs/checkout-widget.md](./docs/checkout-widge
 
 ## Current limitations
 
-- Merchant accounts, saved widget configurations and a payment history dashboard are not implemented.
+- Merchant accounts and saved widget configurations are not implemented.
 - NEAR deposits use NEAR mainnet and the MyNearWallet wallet-selector module. This path still requires end-to-end verification with a live 1Click quote.
 - Other non-EVM wallet deposit flows are not implemented, even if their assets appear in the live registry as payout options.
 - The app is a hackathon prototype, not an audited payment processor. Do not use it for high-value production payments without a full security review.
