@@ -128,8 +128,54 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
   const [gasEstimate, setGasEstimate] = useState(null);
   const [txHash, setTxHash] = useState('');
   const [swapStatus, setSwapStatus] = useState('');
+  const [customerHistory, setCustomerHistory] = useState([]);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('Connect your EVM or NEAR mainnet wallet, choose the asset you will pay with, and set the merchant payout details.');
+  const customerAccount = isNearToken(origin || {}) ? nearWallet : wallet;
+  const historyStorageKey = customerAccount ? 'intentpay_customer_history_' + customerAccount.toLowerCase() : '';
+  useEffect(() => {
+    if (!historyStorageKey) { setCustomerHistory([]); return; }
+    try {
+      const saved = JSON.parse(localStorage.getItem(historyStorageKey) || '[]');
+      setCustomerHistory(Array.isArray(saved) ? saved : []);
+    } catch { setCustomerHistory([]); }
+  }, [historyStorageKey]);
+
+  function saveCustomerHistory(entry) {
+    const account = entry.account || customerAccount;
+    if (!account) return;
+    const key = 'intentpay_customer_history_' + account.toLowerCase();
+    try {
+      const previous = JSON.parse(localStorage.getItem(key) || '[]');
+      const rows = Array.isArray(previous) ? previous : [];
+      const index = rows.findIndex(row => row.id === entry.id);
+      const next = index >= 0
+        ? rows.map((row, i) => i === index ? { ...row, ...entry, updatedAt: new Date().toISOString() } : row)
+        : [{ ...entry, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }, ...rows];
+      localStorage.setItem(key, JSON.stringify(next.slice(0, 100)));
+      if (account.toLowerCase() === customerAccount.toLowerCase()) setCustomerHistory(next.slice(0, 100));
+    } catch { setNotice('Payment submitted, but this browser could not save the local transaction history.'); }
+  }
+
+  function recordCurrentPayment(status, hash = txHash) {
+    if (!quote?.quote?.depositAddress || !origin || !destination || !customerAccount) return;
+    saveCustomerHistory({
+      id: quote.quote.depositAddress,
+      account: customerAccount,
+      merchant: checkoutParams.get('merchantName') || 'Merchant payment',
+      sourceNetwork: chainLabel(tokenChain(origin)),
+      sourceToken: origin.symbol || 'TOKEN',
+      destinationNetwork: chainLabel(tokenChain(destination)),
+      destinationToken: destination.symbol || 'TOKEN',
+      amountPaid: quote.quote.amountInFormatted || formatUnits(quote.quote.amountIn, Number(origin.decimals || 0)),
+      amountReceived: quote.quote.amountOutFormatted || formatUnits(quote.quote.amountOut, Number(destination.decimals || 0)),
+      transactionHash: hash || '',
+      depositAddress: quote.quote.depositAddress,
+      status: status || 'PROCESSING',
+      fixedAmount: Boolean(isFixedWidgetCheckout)
+    });
+  }
+
   const quoteRequestRef = useRef(0);
   const evmProvidersRef = useRef([]);
   const activeEvmProviderRef = useRef(null);
@@ -566,6 +612,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
         }
         sessionStorage.removeItem('intentpay_pending_near');
         setTxHash(hash);
+        recordCurrentPayment('PROCESSING', hash);
         setNotice('NEAR transaction submitted. Notifying 1Click and checking settlement status…');
         const submitted = await fetch('/api/deposit/submit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ txHash: hash, depositAddress, nearSenderAccount: nearWallet }) });
         const submitData = await submitted.json();
@@ -575,6 +622,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
           const statusData = await statusResponse.json();
           if (!statusResponse.ok) throw new Error(statusData.error || 'Could not read payment status.');
           setSwapStatus(statusData.status || 'UNKNOWN');
+          recordCurrentPayment(statusData.status || 'UNKNOWN', hash);
           if (TERMINAL.has(statusData.status)) {
             sessionStorage.removeItem('intentpay_pending_near');
             if (statusData.status === 'SUCCESS') notifyPaymentSuccess();
@@ -617,6 +665,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
         tx = await signer.sendTransaction({ to: depositAddress, value: atomicAmount });
       }
       setTxHash(tx.hash);
+      recordCurrentPayment('PROCESSING', tx.hash);
       setNotice('Transaction broadcast. Waiting for one network confirmation…');
       const receipt = await tx.wait(1);
       if (!receipt || receipt.status !== 1) throw new Error('The deposit transaction did not confirm successfully.');
@@ -635,6 +684,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
         const statusData = await statusResponse.json();
         if (!statusResponse.ok) throw new Error(statusData.error || 'Could not read payment status.');
         setSwapStatus(statusData.status || 'UNKNOWN');
+        recordCurrentPayment(statusData.status || 'UNKNOWN', tx.hash);
         if (TERMINAL.has(statusData.status)) {
           if (statusData.status === 'SUCCESS') { notifyPaymentSuccess();
             setNotice('Payment completed. 1Click reports that the merchant payout was delivered.'); if ('Notification' in window && Notification.permission === 'granted') new Notification('IntentPay payment complete', { body: 'The merchant payout has been confirmed by NEAR Intents.' }); }
@@ -659,6 +709,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Could not read status.');
       setSwapStatus(data.status || 'UNKNOWN');
+      recordCurrentPayment(data.status || 'UNKNOWN');
       if (TERMINAL.has(data.status)) sessionStorage.removeItem('intentpay_pending_near');
       if (data.status === 'SUCCESS') notifyPaymentSuccess();
       setNotice(data.status === 'SUCCESS' ? 'Payment completed and delivered.' : `Current payment status: ${data.status || 'UNKNOWN'}`);
@@ -733,6 +784,17 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
         {busy ? 'Processing payment…' : txHash ? 'Payment submitted' : 'Confirm Pay'}
       </button>}
     </section>
+    {checkoutOnly && <section className="customer-history">
+      <div className="customer-history-head"><div><div className="eyebrow">YOUR ACTIVITY</div><h2>Transaction history</h2><p>Payments made from this wallet on this browser.</p></div><span className="history-count">{customerHistory.length} {customerHistory.length === 1 ? 'payment' : 'payments'}</span></div>
+      {!customerAccount ? <p className="history-empty">Connect the wallet you used to pay to view its saved transaction history.</p> : customerHistory.length === 0 ? <p className="history-empty">No payments recorded for this wallet on this browser yet.</p> : <div className="history-list">{customerHistory.map(item => <article className="history-item" key={item.id}>
+        <div className="history-item-top"><strong>{item.merchant || 'Merchant payment'}</strong><span className={'history-status status-' + String(item.status || 'processing').toLowerCase()}>{String(item.status || 'PROCESSING').replaceAll('_', ' ')}</span></div>
+        <div className="history-amount">{item.amountPaid || '—'} {item.sourceToken || ''}<span>→</span>{item.amountReceived || '—'} {item.destinationToken || ''}</div>
+        <div className="history-route">{item.sourceNetwork || 'Source'} → {item.destinationNetwork || 'Destination'}</div>
+        {item.transactionHash && <div className="history-hash">Transaction: <code>{short(item.transactionHash)}</code></div>}
+        <div className="history-date">{new Date(item.createdAt || item.updatedAt || Date.now()).toLocaleString()}</div>
+      </article>)}</div>}
+      <p className="history-disclaimer">History is saved locally in this browser and is tied to the connected wallet. It won't automatically sync across devices or browsers.</p>
+    </section>}
     <footer><span>IntentPay</span><span>{checkoutOnly ? 'Secure checkout powered by NEAR Intents' : 'Non-custodial cross-chain checkout'}</span></footer>
   </main>;
 }
