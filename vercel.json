@@ -19,6 +19,10 @@
       "dest": "server.js"
     },
     {
+      "src": "^/merchant/?$",
+      "dest": "/index.html"
+    },
+    {
       "handle": "filesystem"
     },
     {
