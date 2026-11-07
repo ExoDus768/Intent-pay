@@ -448,22 +448,13 @@ export default function App() {
   }
 
   useEffect(() => {
-    const complete = Boolean(
-      configured && !invoiceLoading && origin && destination && amount && Number(amount) > 0 &&
-      recipient.trim() && (isNearToken(origin) ? nearWallet : wallet)
-    );
-    // Invalidate any quote response still in flight when an input changes.
+    // A changed payment detail invalidates the previous quote. The customer
+    // explicitly requests a fresh quote with the Get quote button.
     quoteRequestRef.current += 1;
     setQuote(null);
+    setGasEstimate(null);
     setTxHash('');
     setSwapStatus('');
-    if (!complete) return undefined;
-
-    const timer = setTimeout(() => { createQuote(); }, 650);
-    return () => {
-      clearTimeout(timer);
-      quoteRequestRef.current += 1;
-    };
   }, [configured, invoiceLoading, invoice?.id, originAsset, destinationAsset, amount, recipient, wallet, nearWallet, tokens]);
 
   async function sendDeposit() {
@@ -656,12 +647,14 @@ export default function App() {
         <div className="quote-row"><span>Estimated time</span><strong>{quote.quote.timeEstimate ? Math.ceil(quote.quote.timeEstimate / 60) + ' min' : 'Provider estimate unavailable'}</strong></div><div className="quote-row"><span>Quote expires</span><strong>{quote.quote.deadline ? new Date(quote.quote.deadline).toLocaleTimeString() : 'Provider-defined'}</strong></div>
         {<div className="deposit-address"><span>Unique deposit address</span><code>{quote.quote.depositAddress}</code></div>}
         {quote.quote.depositMemo && <div className="deposit-address"><span>Required memo</span><code>{quote.quote.depositMemo}</code></div>}
-        <button className="primary" onClick={sendDeposit} disabled={busy || Boolean(txHash)}>{txHash ? 'Deposit submitted' : 'Pay from connected wallet'}</button>
         {txHash && <div className="tx-details"><span>Deposit transaction</span><code>{short(txHash)}</code><span>Status: {swapStatus || 'Waiting'}</span></div>}
         {txHash && <button className="secondary" onClick={refreshStatus} disabled={busy}>Refresh payment status</button>}
         <p className="fineprint">MAINNET TRANSACTION · This approval transfers real assets. Verify the wallet network, token, amount, merchant address, quote expiry, and deposit address before signing. Never send a different asset to this address.</p>
       </div>}
-      <div className="fineprint">{loadingTokens ? 'Loading live 1Click assets…' : `${tokens.length} live assets loaded`} · EVM and NEAR wallet deposits enabled for supported listed assets.</div>
+      <button type="button" className="primary" onClick={() => quote?.quote ? sendDeposit() : createQuote()} disabled={busy || Boolean(txHash) || !configured || invoiceLoading || !origin || !destination || !amount || Number(amount) <= 0 || !recipient.trim() || !(isNearToken(origin) ? nearWallet : wallet)}>
+        {busy ? (quote?.quote ? 'Processing payment…' : 'Getting quote…') : txHash ? 'Payment submitted' : quote?.quote ? 'Confirm Pay' : 'Get quote'}
+      </button>
+      {txHash && <div className="tx-details">
     </section>
     <footer><span>IntentPay</span><span>Non-custodial cross-chain checkout</span></footer>
   </main>;
