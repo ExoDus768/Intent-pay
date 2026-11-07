@@ -574,7 +574,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
             ? 'Zerion' : (item?.info?.name || 'EVM');
           setNotice(walletName + ' wallet connected. Your connected address will be used as the refund address.');
           selected.on?.('accountsChanged', next => setWallet(next?.[0] || ''));
-          selected.on?.('chainChanged', () => setQuote(null));
+          selected.on?.('chainChanged', chainId => { setQuote(null); const matching = origins.find(t => CHAIN_IDS[tokenChain(t)] === Number(chainId)); if (matching) { setOriginChain(tokenChain(matching)); setOriginAsset(''); } });
           connected = true;
           break;
         } catch (error) {
@@ -622,7 +622,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
       setWalletFeedback('WalletConnect wallet connected successfully.');
       setNotice('WalletConnect wallet connected. Your address will be used for refunds.');
       wc.on('accountsChanged', next => setWallet(next?.[0] || ''));
-      wc.on('chainChanged', () => setQuote(null));
+      wc.on('chainChanged', chainId => { setQuote(null); const matching = origins.find(t => CHAIN_IDS[tokenChain(t)] === Number(chainId)); if (matching) { setOriginChain(tokenChain(matching)); setOriginAsset(''); } });
     } catch (error) {
       setWalletFeedback('WalletConnect failed: ' + (error?.message || 'Unknown error'));
       setNotice('WalletConnect failed: ' + (error?.message || 'Unknown error'));
