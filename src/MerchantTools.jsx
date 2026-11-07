@@ -11,8 +11,7 @@ function readHistory() {
   catch { return []; }
 }
 
-export default function MerchantTools({ tokens = [], defaultRecipient = '' }) {
-  const [open, setOpen] = useState(false);
+export default function MerchantTools({ tokens = [], defaultRecipient = '', open = false, onClose = () => {} }) {
   const [tab, setTab] = useState('create');
   const [chain, setChain] = useState('');
   const [asset, setAsset] = useState('');
@@ -124,12 +123,11 @@ export default function MerchantTools({ tokens = [], defaultRecipient = '' }) {
   const widgetSnippet = widgetInvoiceId ? '<button type="button" data-intentpay-checkout data-intentpay-invoice="' + widgetInvoiceId + '">Pay with crypto</button>\n<script src="' + window.location.origin + '/intentpay.js" defer></script>' : '';
 
   return <>
-    <button type="button" className="merchant-tools-btn" onClick={() => setOpen(true)}>Merchant tools</button>
-    {open && <div className="merchant-overlay" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setOpen(false); }}>
+    {open && <div className="merchant-overlay" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
       <section className="merchant-modal" role="dialog" aria-modal="true" aria-labelledby="merchant-title">
         <div className="merchant-modal-head">
           <div><div className="eyebrow">INTENTPAY MERCHANT</div><h2 id="merchant-title">Merchant workspace</h2></div>
-          <button type="button" className="merchant-close" aria-label="Close merchant workspace" onClick={() => setOpen(false)}>×</button>
+          <button type="button" className="merchant-close" aria-label="Close merchant workspace" onClick={onClose}>×</button>
         </div>
         <div className="merchant-tabs">
           <button type="button" className={tab === 'create' ? 'active' : ''} onClick={() => setTab('create')}>Create invoice</button>
