@@ -525,7 +525,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
     catch { return setNotice('The amount has too many decimal places for the selected token.'); }
 
     setBusy(true);
-    setNotice('Requesting a committed 1Click quote…');
+    setNotice('Checking this payment route with a 1Click preview…');
     try {
       const response = await fetch('/api/quote', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -547,6 +547,8 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
       let gas = { kind: 'unavailable', label: 'Wallet estimate unavailable' };
       if (isNearToken(origin)) {
         gas = { kind: 'near', label: 'Shown in NEAR wallet before approval' };
+      } else if (!data?.quote?.depositAddress) {
+        gas = { kind: 'unavailable', label: 'Final network fee will be shown in your wallet before approval' };
       } else {
         try {
           const walletProvider = activeEvmProviderRef.current || window.ethereum;
@@ -633,7 +635,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
       }
     }
     if (Date.parse(activeQuote.quote.deadline) <= Date.now()) {
-      setQuote(null); return setNotice('This quote has expired. Request a new quote before sending funds.');
+      setQuote(null); setBusy(false); return setNotice('This quote has expired. Request a new quote before sending funds.');
     }
     const chainKey = tokenChain(origin);
     if (chainKey === 'near') {
