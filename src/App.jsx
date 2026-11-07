@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { BrowserProvider, Contract, formatUnits, isAddress, parseUnits } from 'ethers';
+import { BrowserProvider, Contract, Interface, formatUnits, isAddress, parseUnits } from 'ethers';
 import { actionCreators, setupWalletSelector } from '@near-wallet-selector/core';
 import { setupModal } from '@near-wallet-selector/modal-ui';
 import { setupMyNearWallet } from '@near-wallet-selector/my-near-wallet';
@@ -14,6 +14,8 @@ const CHAIN_IDS = {
   scroll: 534352, aurora: 1313161554
 };
 const ERC20_ABI = ['function transfer(address to, uint256 amount) returns (bool)', 'function balanceOf(address owner) view returns (uint256)'];
+const ERC20_TRANSFER_INTERFACE = new Interface(['function transfer(address to, uint256 amount)']);
+const NATIVE_SYMBOL = {1:'ETH',8453:'ETH',42161:'ETH',10:'ETH',137:'POL',56:'BNB',43114:'AVAX',100:'xDAI',80094:'BERA',534352:'ETH',1313161554:'ETH'};
 const TERMINAL = new Set(['SUCCESS', 'FAILED', 'REFUNDED', 'INCOMPLETE_DEPOSIT']);
 const tokenChain = t => String(t.blockchain || '').toLowerCase();
 const isNearToken = t => tokenChain(t) === 'near';
@@ -51,6 +53,7 @@ export default function App() {
   const [balanceError, setBalanceError] = useState('');
   const [recipient, setRecipient] = useState('');
   const [quote, setQuote] = useState(null);
+  const [gasEstimate, setGasEstimate] = useState(null);
   const [txHash, setTxHash] = useState('');
   const [swapStatus, setSwapStatus] = useState('');
   const [busy, setBusy] = useState(false);
@@ -373,7 +376,7 @@ export default function App() {
 
   async function createQuote() {
     const requestId = ++quoteRequestRef.current;
-    setQuote(null); setTxHash(''); setSwapStatus('');
+    setQuote(null); setGasEstimate(null); setTxHash(''); setSwapStatus('');
     if (isNearToken(origin || {}) ? !nearWallet : !wallet) return setNotice(isNearToken(origin || {}) ? 'Connect your NEAR wallet first. It will be used for refunds.' : 'Connect your EVM wallet first. The connected address is used for refunds.');
     if (!origin || !destination || !amount || Number(amount) <= 0 || !recipient.trim()) return setNotice('Complete the origin token, destination token, amount, and merchant payout address.');
     if (invoice && (destination.assetId !== invoice.destinationAsset || recipient.toLowerCase() !== invoice.recipient.toLowerCase())) return setNotice('The invoice payout details cannot be changed.');
@@ -403,8 +406,37 @@ export default function App() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Quote request failed.');
       if (requestId !== quoteRequestRef.current) return;
+      let gas = { kind: 'unavailable', label: 'Wallet estimate unavailable' };
+      if (isNearToken(origin)) {
+        gas = { kind: 'near', label: 'Shown in NEAR wallet before approval' };
+      } else {
+        try {
+          const walletProvider = activeEvmProviderRef.current || window.ethereum;
+          if (!walletProvider) throw new Error('Connect an EVM wallet to estimate network gas.');
+          const evmProvider = new BrowserProvider(walletProvider);
+          const network = await evmProvider.getNetwork();
+          const chainId = Number(network.chainId);
+          if (chainId !== CHAIN_IDS[tokenChain(origin)]) throw new Error('Switch to the selected payment network to estimate gas.');
+          const signer = await evmProvider.getSigner();
+          const from = await signer.getAddress();
+          const to = data.quote.depositAddress;
+          const value = origin.contractAddress ? 0n : BigInt(data.quote.amountIn);
+          const txRequest = origin.contractAddress
+            ? { from, to: origin.contractAddress, data: ERC20_TRANSFER_INTERFACE.encodeFunctionData('transfer', [to, BigInt(data.quote.amountIn)]) }
+            : { from, to, value };
+          const gasLimit = await evmProvider.estimateGas(txRequest);
+          const feeData = await evmProvider.getFeeData();
+          const gasPrice = feeData.maxFeePerGas ?? feeData.gasPrice;
+          if (!gasPrice) throw new Error('Network gas price is unavailable.');
+          const gasCost = gasLimit * gasPrice;
+          gas = { kind: 'evm', amount: formatUnits(gasCost, 18), symbol: NATIVE_SYMBOL[chainId] || 'native token', label: 'Estimated from current network conditions' };
+        } catch (error) {
+          gas = { kind: 'unavailable', label: error?.message || 'Wallet gas estimate unavailable' };
+        }
+      }
+      setGasEstimate(gas);
       setQuote(data);
-      setNotice('Quote ready. Review the amount, payout details, and expiry before approving payment.');
+      setNotice('Quote ready. Review the payment amount and estimated network gas before approving.');
     } catch (e) {
       if (requestId === quoteRequestRef.current) setNotice(e.message || 'Could not create quote.');
     }
@@ -608,7 +640,13 @@ export default function App() {
         <div className="quote-title">Mainnet quote details</div>{invoice && <p className="helper-text">Fixed-output invoice · NEAR Intents calculates the input amount required to deliver the exact merchant amount.</p>}
         <div className="quote-row"><span>Pay</span><strong>{quote.quote.amountInFormatted || formatUnits(quote.quote.amountIn, Number(origin?.decimals || 0))} {origin?.symbol}</strong></div>
         <div className="quote-row"><span>Estimated receive</span><strong>{(quote.quote.amountOutFormatted || quote.quote.amountOut) + ' ' + destination?.symbol}</strong></div>
+        {quote.quote.amountInUsd && <div className="quote-row"><span>Payment value</span><strong>${Number(quote.quote.amountInUsd).toFixed(4)} USD</strong></div>}
+        <div className="quote-row"><span>Network gas (paid separately)</span><strong>{gasEstimate?.kind === 'evm' ? '~' + Number(gasEstimate.amount).toPrecision(5) + ' ' + gasEstimate.symbol : gasEstimate?.label || 'Estimate unavailable'}</strong></div>
+        {gasEstimate?.kind === 'evm' && <p className="helper-text">{gasEstimate.label}. The final fee can change before confirmation; your wallet shows the amount to approve.</p>}
+        {gasEstimate?.kind === 'near' && <p className="helper-text">NEAR network gas is paid separately from your NEAR balance. Review the final fee in your NEAR wallet before approving.</p>}
+        {gasEstimate?.kind === 'unavailable' && <p className="helper-text">Could not estimate gas: {gasEstimate.label}. Your wallet will show the required network fee before you sign.</p>}
         <div className="quote-row"><span>Routing</span><strong>NEAR Intents · 1Click</strong></div><div className="quote-row"><span>Merchant address</span><strong>{short(recipient)}</strong></div>
+        <p className="helper-text">1Click routing and swap costs are reflected in the quoted receive amount where applicable. Network gas is separate and paid to the source blockchain.</p>
         {quote.quote.minAmountIn && <div className="quote-row"><span>Minimum input</span><strong>{formatUnits(quote.quote.minAmountIn, Number(origin?.decimals || 0))} {origin?.symbol}</strong></div>}
         {quote.quote.maxAmountIn && <div className="quote-row"><span>Maximum input</span><strong>{formatUnits(quote.quote.maxAmountIn, Number(origin?.decimals || 0))} {origin?.symbol}</strong></div>}
         <div className="quote-row"><span>Estimated time</span><strong>{quote.quote.timeEstimate ? Math.ceil(quote.quote.timeEstimate / 60) + ' min' : 'Provider estimate unavailable'}</strong></div><div className="quote-row"><span>Quote expires</span><strong>{quote.quote.deadline ? new Date(quote.quote.deadline).toLocaleTimeString() : 'Provider-defined'}</strong></div>
