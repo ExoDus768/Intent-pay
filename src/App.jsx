@@ -275,10 +275,10 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
       sourceToken: origin.symbol || 'TOKEN',
       destinationNetwork: chainLabel(tokenChain(destination)),
       destinationToken: destination.symbol || 'TOKEN',
-      amountPaid: quote.quote.amountInFormatted || formatUnits(quote.quote.amountIn, Number(origin.decimals || 0)),
-      amountReceived: quote.quote.amountOutFormatted || formatUnits(quote.quote.amountOut, Number(destination.decimals || 0)),
+      amountPaid: paymentQuote.quote.amountInFormatted || formatUnits(paymentQuote.quote.amountIn, Number(origin.decimals || 0)),
+      amountReceived: paymentQuote.quote.amountOutFormatted || formatUnits(paymentQuote.quote.amountOut, Number(destination.decimals || 0)),
       transactionHash: hash || '',
-      depositAddress: quote.quote.depositAddress,
+      depositAddress: paymentQuote.quote.depositAddress,
       status: status || 'PROCESSING',
       fixedAmount: Boolean(isFixedWidgetCheckout)
     });
