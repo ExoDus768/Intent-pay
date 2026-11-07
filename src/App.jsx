@@ -265,10 +265,10 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
     } catch { setNotice('Payment submitted, but transaction history could not be saved.'); }
   }
 
-  function recordCurrentPayment(status, hash = txHash) {
-    if (!quote?.quote?.depositAddress || !origin || !destination || !customerAccount) return;
+  function recordCurrentPayment(status, hash = txHash, paymentQuote = quote) {
+    if (!paymentQuote?.quote?.depositAddress || !origin || !destination || !customerAccount) return;
     saveCustomerHistory({
-      id: quote.quote.depositAddress,
+      id: paymentQuote.quote.depositAddress,
       account: customerAccount,
       merchant: checkoutParams.get('merchantName') || 'Merchant payment',
       sourceNetwork: chainLabel(tokenChain(origin)),
@@ -641,8 +641,8 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
       setBusy(true);
       try {
         const walletClient = await nearSelector.wallet();
-        const depositAddress = quote.quote.depositAddress;
-        const amountIn = String(quote.quote.amountIn);
+        const depositAddress = activeQuote.quote.depositAddress;
+        const amountIn = String(activeQuote.quote.amountIn);
         const tokenContract = origin.contractAddress || (origin.assetId === 'nep141:wrap.near' ? 'wrap.near' : '');
         if (!tokenContract) throw new Error('This NEAR token has no valid NEP-141 contract address in the live registry.');
         setNotice('Confirm the NEAR deposit in your wallet. Check the token, amount, and deposit address carefully.');
@@ -657,7 +657,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
             'ft_transfer', { receiver_id: depositAddress, amount: amountIn }, 50000000000000n, 1n
           )] }];
         }
-        sessionStorage.setItem('intentpay_pending_near', JSON.stringify({ quote, originAsset, destinationAsset, recipient, nearWallet }));
+        sessionStorage.setItem('intentpay_pending_near', JSON.stringify({ quote: activeQuote, originAsset, destinationAsset, recipient, nearWallet }));
         const result = await walletClient.signAndSendTransactions({ transactions, callbackUrl: window.location.href });
         const hash = result?.[0]?.transaction?.hash || result?.[0]?.transaction_outcome?.id || result?.transaction?.hash;
         if (!hash) {
@@ -667,7 +667,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
         }
         sessionStorage.removeItem('intentpay_pending_near');
         setTxHash(hash);
-        recordCurrentPayment('PROCESSING', hash);
+        recordCurrentPayment('PROCESSING', hash, activeQuote);
         setNotice('NEAR transaction submitted. Notifying 1Click and checking settlement status…');
         const submitted = await fetch('/api/deposit/submit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ txHash: hash, depositAddress, nearSenderAccount: nearWallet }) });
         const submitData = await submitted.json();
@@ -677,7 +677,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
           const statusData = await statusResponse.json();
           if (!statusResponse.ok) throw new Error(statusData.error || 'Could not read payment status.');
           setSwapStatus(statusData.status || 'UNKNOWN');
-          recordCurrentPayment(statusData.status || 'UNKNOWN', hash);
+          recordCurrentPayment(statusData.status || 'UNKNOWN', hash, activeQuote);
           if (TERMINAL.has(statusData.status)) {
             sessionStorage.removeItem('intentpay_pending_near');
             if (statusData.status === 'SUCCESS') notifyPaymentSuccess();
@@ -708,8 +708,8 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
       }
       if (Number(network.chainId) !== expectedChain) throw new Error('Your wallet is on the wrong network. Switch to the selected payment network.');
       const signer = await provider.getSigner();
-      const depositAddress = quote.quote.depositAddress;
-      const atomicAmount = BigInt(quote.quote.amountIn);
+      const depositAddress = activeQuote.quote.depositAddress;
+      const atomicAmount = BigInt(activeQuote.quote.amountIn);
       setNotice('Confirm the deposit transaction in your wallet. Check the network and amount carefully.');
 
       let tx;
@@ -720,7 +720,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
         tx = await signer.sendTransaction({ to: depositAddress, value: atomicAmount });
       }
       setTxHash(tx.hash);
-      recordCurrentPayment('PROCESSING', tx.hash);
+      recordCurrentPayment('PROCESSING', tx.hash, activeQuote);
       setNotice('Transaction broadcast. Waiting for one network confirmation…');
       const receipt = await tx.wait(1);
       if (!receipt || receipt.status !== 1) throw new Error('The deposit transaction did not confirm successfully.');
@@ -739,7 +739,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
         const statusData = await statusResponse.json();
         if (!statusResponse.ok) throw new Error(statusData.error || 'Could not read payment status.');
         setSwapStatus(statusData.status || 'UNKNOWN');
-        recordCurrentPayment(statusData.status || 'UNKNOWN', tx.hash);
+        recordCurrentPayment(statusData.status || 'UNKNOWN', tx.hash, activeQuote);
         if (TERMINAL.has(statusData.status)) {
           if (statusData.status === 'SUCCESS') { notifyPaymentSuccess();
             setNotice('Payment completed. 1Click reports that the merchant payout was delivered.'); if ('Notification' in window && Notification.permission === 'granted') new Notification('IntentPay payment complete', { body: 'The merchant payout has been confirmed by NEAR Intents.' }); }
