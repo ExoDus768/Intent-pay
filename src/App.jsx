@@ -88,6 +88,8 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
   const [originChain, setOriginChain] = useState('');
   const [originAsset, setOriginAsset] = useState('');
   const [originSearch, setOriginSearch] = useState('');
+  const [walletTokenBalances, setWalletTokenBalances] = useState({});
+  const [walletTokenScan, setWalletTokenScan] = useState({ loading: false, error: '', complete: false });
   const [destinationChain, setDestinationChain] = useState('');
   const [destinationAsset, setDestinationAsset] = useState(merchantAssetParam);
   const [amount, setAmount] = useState(merchantAmountParam);
@@ -337,9 +339,83 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
     .sort((a, b) => chainLabel(tokenChain(a)).localeCompare(chainLabel(tokenChain(b))) || tokenPriority(a) - tokenPriority(b) || String(a.symbol || '').localeCompare(String(b.symbol || ''))),
   [origins, originSearch]);
   const originTokenGroups = useMemo(() => [...new Set(filteredOriginTokens.map(tokenChain))], [filteredOriginTokens]);
+  const walletDetectedOriginTokens = useMemo(() => originTokens.filter(t => Number(walletTokenBalances[t.assetId] || 0) > 0), [originTokens, walletTokenBalances]);
+  const otherOriginTokens = useMemo(() => originTokens.filter(t => !(Number(walletTokenBalances[t.assetId] || 0) > 0)), [originTokens, walletTokenBalances]);
   const destinations = useMemo(() => tokens, [tokens]);
   const destinationChains = useMemo(() => [...new Set(destinations.map(tokenChain))].sort((a, b) => chainLabel(a).localeCompare(chainLabel(b))), [destinations]);
   const destinationTokens = useMemo(() => destinations.filter(t => tokenChain(t) === destinationChain).sort((a, b) => tokenPriority(a) - tokenPriority(b) || String(a.symbol || '').localeCompare(String(b.symbol || ''))), [destinations, destinationChain]);
+  useEffect(() => {
+    let cancelled = false;
+    async function scanWalletTokens() {
+      setWalletTokenBalances({});
+      setWalletTokenScan({ loading: false, error: '', complete: false });
+      if (!originChain) return;
+      const nearSource = originChain === 'near';
+      const account = nearSource ? nearWallet : wallet;
+      if (!account) {
+        setWalletTokenScan({ loading: false, error: nearSource ? 'Connect your NEAR wallet to detect token balances.' : 'Connect your EVM wallet to detect token balances.', complete: false });
+        return;
+      }
+      setWalletTokenScan({ loading: true, error: '', complete: false });
+      try {
+        const found = {};
+        if (nearSource) {
+          const accountArgs = btoa(JSON.stringify({ account_id: account }));
+          for (const token of originTokens) {
+            if (cancelled) return;
+            const contractId = token.contractAddress || String(token.assetId || '').replace(/^nep141:/, '');
+            if (!contractId) continue;
+            const response = await fetch('https://rpc.mainnet.near.org', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ jsonrpc: '2.0', id: 'intentpay-wallet-scan', method: 'query', params: { request_type: 'call_function', finality: 'final', account_id: contractId, method_name: 'ft_balance_of', args_base64: accountArgs } })
+            });
+            const data = await response.json();
+            if (!response.ok || data.error) continue;
+            const raw = JSON.parse(new TextDecoder().decode(new Uint8Array(data.result.result)));
+            const formatted = Number(formatUnits(String(raw), Number(token.decimals || 0)));
+            if (Number.isFinite(formatted) && formatted > 0) found[token.assetId] = formatted;
+          }
+        } else {
+          const providerObject = activeEvmProviderRef.current || window.ethereum;
+          if (!providerObject) throw new Error('Reconnect your EVM wallet to detect token balances.');
+          const provider = new BrowserProvider(providerObject, 'any');
+          const network = await provider.getNetwork();
+          const expectedChain = CHAIN_IDS[originChain];
+          if (expectedChain && Number(network.chainId) !== expectedChain) {
+            throw new Error('Your wallet is on ' + Number(network.chainId) + '. Switch it to ' + chainLabel(originChain) + ' to detect tokens on this network.');
+          }
+          const batchSize = 8;
+          for (let offset = 0; offset < originTokens.length; offset += batchSize) {
+            if (cancelled) return;
+            const batch = originTokens.slice(offset, offset + batchSize);
+            const results = await Promise.allSettled(batch.map(async token => {
+              const raw = token.contractAddress
+                ? await new Contract(token.contractAddress, ERC20_ABI, provider).balanceOf(account)
+                : await provider.getBalance(account);
+              const formatted = Number(formatUnits(raw, Number(token.decimals || 0)));
+              return { assetId: token.assetId, balance: formatted };
+            }));
+            for (const result of results) {
+              if (result.status === 'fulfilled' && Number.isFinite(result.value.balance) && result.value.balance > 0) {
+                found[result.value.assetId] = result.value.balance;
+              }
+            }
+          }
+        }
+        if (!cancelled) {
+          setWalletTokenBalances(found);
+          setWalletTokenScan({ loading: false, error: '', complete: true });
+          if (!originAsset && Object.keys(found).length === 1) setOriginAsset(Object.keys(found)[0]);
+        }
+      } catch (error) {
+        if (!cancelled) setWalletTokenScan({ loading: false, error: error?.message || 'Could not scan this network for wallet tokens.', complete: false });
+      }
+    }
+    scanWalletTokens();
+    return () => { cancelled = true; };
+  }, [originChain, wallet, nearWallet, originTokens]);
+
   useEffect(() => {
     let cancelled = false;
     async function loadSelectedAssetBalance() {
@@ -818,29 +894,38 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
     <section className="checkout" id="checkout">{isWidgetCheckout && <div className="checkout-banner"><span className="eyebrow">{checkoutOnly ? 'MERCHANT PAYMENT' : 'PAYMENT REQUEST'}</span><strong>{isFixedWidgetCheckout ? merchantAmountParam + ' ' + (destination?.symbol || '') : 'Variable amount'}</strong><p>{checkoutParams.get('merchantName') || 'Merchant payment'} · {fixedOutputCheckout ? 'Exact payout amount delivered through NEAR Intents.' : 'Customer chooses the amount.'}</p></div>}
       <div className="checkout-head"><div><div className="eyebrow">MAINNET SECURE CHECKOUT</div><h2>{checkoutOnly ? 'Complete payment' : 'Configure payment'}</h2></div><span className="mainnet-pill">MAINNET</span></div>
       <form onSubmit={e => e.preventDefault()}>
+        <label>Payment network</label>
+        <select value={originChain} onChange={e => { setOriginChain(e.target.value); setOriginAsset(''); setOriginSearch(''); }} required disabled={loadingTokens}>
+          <option value="">{loadingTokens ? 'Loading supported networks…' : 'Choose the network holding your token'}</option>
+          {originChains.map(chain => <option key={chain} value={chain}>{chainLabel(chain)}</option>)}
+        </select>
         <label>Customer pays with</label>
-        <p className="helper-text">Select the token you already have. You do not need to choose a network separately.</p>
+        <p className="helper-text">Choose your network first. IntentPay checks your connected wallet and highlights tokens with a balance on that network.</p>
         <input
           type="search"
           value={originSearch}
           onChange={e => setOriginSearch(e.target.value)}
-          placeholder="Search token or network (e.g. USDC, Base)"
-          aria-label="Search payment tokens by name or network"
-          disabled={loadingTokens}
+          placeholder="Search token (e.g. USDC)"
+          aria-label="Search payment tokens"
+          disabled={loadingTokens || !originChain}
         />
-        <select value={originAsset} onChange={e => {
-          const selected = origins.find(t => t.assetId === e.target.value);
-          setOriginAsset(e.target.value);
-          setOriginChain(selected ? tokenChain(selected) : '');
-        }} required disabled={loadingTokens}>
-          <option value="">{loadingTokens ? 'Loading supported tokens…' : 'Choose the token in your wallet'}</option>
-          {originTokenGroups.map(chain => <optgroup key={chain} label={chainLabel(chain)}>
-            {filteredOriginTokens.filter(t => tokenChain(t) === chain).map(t => (
+        <select value={originAsset} onChange={e => setOriginAsset(e.target.value)} required disabled={loadingTokens || !originChain}>
+          <option value="">{!originChain ? 'Choose a network first' : walletTokenScan.loading ? 'Detecting wallet tokens…' : 'Choose a supported token'}</option>
+          {walletDetectedOriginTokens.filter(t => !originSearch || (String(t.symbol || '') + ' ' + String(t.name || '')).toLowerCase().includes(originSearch.toLowerCase())).length > 0 && <optgroup label="Detected in your wallet">
+            {walletDetectedOriginTokens.filter(t => tokenChain(t) === originChain && (!originSearch || (String(t.symbol || '') + ' ' + String(t.name || '')).toLowerCase().includes(originSearch.toLowerCase()))).map(t => (
+              <option key={t.assetId} value={t.assetId}>{t.symbol || 'TOKEN'} · {Number(walletTokenBalances[t.assetId]).toLocaleString(undefined, { maximumFractionDigits: 8 })} available</option>
+            ))}
+          </optgroup>}
+          <optgroup label="Other supported tokens">
+            {filteredOriginTokens.filter(t => tokenChain(t) === originChain && !(Number(walletTokenBalances[t.assetId] || 0) > 0)).map(t => (
               <option key={t.assetId} value={t.assetId}>{t.symbol || 'TOKEN'}{t.name && t.name !== t.symbol ? ' · ' + t.name : ''}</option>
             ))}
-          </optgroup>)}
+          </optgroup>
         </select>
-        {originSearch && filteredOriginTokens.length === 0 && <p className="warning">No supported token matches “{originSearch}”. Try another token name or network.</p>}
+        {originChain && walletTokenScan.loading && <p className="helper-text">Checking your wallet on {chainLabel(originChain)}…</p>}
+        {originChain && walletTokenScan.error && <p className="warning">{walletTokenScan.error}</p>}
+        {originChain && walletTokenScan.complete && <p className="helper-text">{walletDetectedOriginTokens.filter(t => tokenChain(t) === originChain).length} supported token(s) detected in your wallet on {chainLabel(originChain)}. You can still select another supported token if needed.</p>}
+        {originSearch && filteredOriginTokens.filter(t => tokenChain(t) === originChain).length === 0 && <p className="warning">No supported token matches “{originSearch}” on this network.</p>}
         {origin && <p className="helper-text">Selected: <strong>{origin.symbol} on {chainLabel(tokenChain(origin))}</strong>{Number(origin.price) > 0 ? <> · 1 {origin.symbol} ≈ ${Number(origin.price).toLocaleString(undefined, { maximumFractionDigits: 6 })} USD</> : ' · Live USD price unavailable'}</p>}
         <label>{fixedOutputCheckout ? 'Fixed checkout price (USD)' : 'Amount to pay'}</label><input type="number" min="0" step="any" value={amount} onChange={e => setAmount(e.target.value)} placeholder={fixedOutputCheckout ? 'e.g. 25.00 USD' : '0.00'} required readOnly={Boolean(isFixedWidgetCheckout)} /><p className="helper-text">{fixedOutputCheckout ? <>This checkout is fixed at <strong>${Number(amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD</strong>. IntentPay converts that value into the merchant's payout token and quotes the amount you need to pay in your selected wallet token.</> : usdEstimate !== null ? <>Estimated value: <strong>~ ${usdEstimate.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 4 })}</strong></> : amount && origin ? 'USD estimate unavailable for this token right now.' : 'Enter an amount to see its approximate USD value.'}</p><p className="helper-text">Minimum payment: $0.01 USD equivalent, checked using live 1Click pricing.</p>{origin && !fixedOutputCheckout && <><p className="balance-line">{balanceLoading ? 'Checking wallet balance…' : originBalance !== '' ? <>Wallet balance: <strong>{Number(originBalance).toLocaleString(undefined, { maximumFractionDigits: 8 })} {origin.symbol}</strong></> : balanceError}</p><div className="percentage-row" aria-label="Select percentage of wallet balance">{[25, 50, 75, 100].map(percent => <button key={percent} type="button" className="percentage-btn" disabled={balanceLoading || originBalance === ''} onClick={() => { try { const units = parseUnits(originBalance, Number(origin.decimals || 0)); setAmount(formatUnits(units * BigInt(percent) / 100n, Number(origin.decimals || 0))); } catch { setNotice('Could not calculate this percentage. Check the selected asset balance.'); } }}>{percent === 100 ? 'MAX' : percent + '%'}</button>)}</div></>}
         <div className="section-rule"><span>MERCHANT RECEIVES</span></div>
