@@ -23,7 +23,6 @@ The server keeps the 1Click JWT private. The browser never receives the API secr
 
 - **Merchant Workspace (`/merchant`)**: configure the checkout widget, payout network/token/address, fixed or variable amount, and copy the hosted checkout link or embed snippet.
 - **Customer Checkout (`/checkout`)**: view the merchant's payment configuration, choose a source asset, connect a wallet, review the live quote and approve payment.
-- **Cross-chain (`/cross-chain`)**: supporting swap experience.
 
 
 ## Mainnet and wallet support
