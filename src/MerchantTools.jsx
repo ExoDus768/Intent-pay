@@ -23,6 +23,7 @@ export default function MerchantTools({ open = false, onClose = () => {}, tokens
   const addressValid = selected?.blockchain?.toLowerCase() === 'near'
     ? /^[a-z0-9]+([._-][a-z0-9]+)*$/.test(recipient.trim())
     : /^0x[a-fA-F0-9]{40}$/.test(recipient.trim());
+  const fixedTokenEstimate = selected && Number(selected.price) > 0 && Number(fixedAmount) > 0 ? Number(fixedAmount) / Number(selected.price) : null;
   const ready = Boolean(selected && addressValid && (mode === 'variable' || (fixedAmount && Number(fixedAmount) > 0)));
   const config = useMemo(() => {
     if (!ready) return null;
@@ -30,7 +31,7 @@ export default function MerchantTools({ open = false, onClose = () => {}, tokens
       merchantAsset: destinationAsset,
       merchantRecipient: recipient.trim(),
       merchantName: merchantName.trim().slice(0, 80),
-      ...(mode === 'fixed' ? { merchantAmount: fixedAmount } : {})
+      ...(mode === 'fixed' ? { merchantAmountUsd: fixedAmount } : {})
     });
     return window.location.origin + '/checkout?' + params.toString();
   }, [ready, destinationAsset, recipient, merchantName, mode, fixedAmount]);
@@ -92,7 +93,7 @@ export default function MerchantTools({ open = false, onClose = () => {}, tokens
               <small>Set the exact amount to collect</small>
             </button>
           </div>
-          {mode === 'fixed' && <><label htmlFor="intentpay-fixed-amount">Amount customer must pay</label><input id="intentpay-fixed-amount" type="number" min="0.00000001" step="any" value={fixedAmount} onChange={e => setFixedAmount(e.target.value)} placeholder="e.g. 25.00" /></>}
+          {mode === 'fixed' && <><label htmlFor="intentpay-fixed-amount">Fixed price (USD)</label><div className="widget-usd-input"><span>$</span><input id="intentpay-fixed-amount" type="number" min="0.01" step="0.01" value={fixedAmount} onChange={e => setFixedAmount(e.target.value)} placeholder="e.g. 25.00" /></div><p className="merchant-hint">Set the price in US dollars. IntentPay converts it to the merchant payout token at the current listed USD price.</p></>}
 
           <div className="section-rule"><span>MERCHANT RECEIVES</span></div>
           <label htmlFor="intentpay-payout-chain">Payout network</label>
@@ -118,7 +119,35 @@ export default function MerchantTools({ open = false, onClose = () => {}, tokens
           <div className="widget-preview">
             <span className="widget-preview-label">BUTTON PREVIEW</span>
             <button type="button" className="widget-preview-button" disabled={!ready || !buttonLabel.trim()} onClick={() => window.open(config, '_blank', 'noopener,noreferrer')}>{buttonLabel || 'Pay with crypto'} <span>↗</span></button>
-            <small>{mode === 'fixed' ? (fixedAmount || '—') + ' ' + (selected?.symbol || '') + ' · fixed-output checkout' : 'Customer chooses the payment amount'} · Preview opens checkout only; it does not pay.</small>
+            <small>{mode === 'fixed' ? 'Fixed price: 
+          </div>
+
+          {ready && <>
+            <label>Website embed code</label>
+            <pre className="widget-code">{embed}</pre>
+            <button type="button" className="primary" onClick={() => copy(embed, 'Embed code')}>Copy embed code</button>
+            <label>Hosted checkout link</label>
+            <div className="widget-direct-link"><code>{config}</code><button type="button" className="secondary" onClick={() => copy(config, 'Checkout link')}>Copy link</button></div>
+            <div className="widget-qr-card">
+              <div>
+                <strong>Scan to pay</strong>
+                <p>Customers can scan this QR code with their phone camera to open this exact checkout.</p>
+              </div>
+              {qrDataUrl ? <img className="widget-qr-image" src={qrDataUrl} alt="QR code for this IntentPay checkout link" /> : <div className="widget-qr-placeholder">{qrError || 'Generating QR code…'}</div>}
+              {qrDataUrl && <a className="widget-qr-download" href={qrDataUrl} download="intentpay-checkout-qr.png">Download QR code</a>}
+            </div>
+          </>}
+          {!ready && <p className="widget-setup-hint">Choose a payout network and token, enter your receiving wallet address, and complete the amount settings to generate your widget.</p>}
+          <p className="merchant-hint">The button opens IntentPay's hosted mainnet checkout. Customers connect their own wallet, review the live NEAR Intents quote and network fee, then approve the payment. Your receiving address and payout asset are included in the public checkout link.</p>
+          {error && <p className="merchant-error">{error}</p>}
+          {notice && <p className="merchant-notice">{notice}</p>}
+        </div>
+        <div className="merchant-modal-foot">Powered by NEAR Intents · Mainnet only</div>
+      </section>
+    </div>
+  );
+}
+ + (fixedAmount || '—') + ' USD' + (fixedTokenEstimate !== null ? ' · approx. ' + fixedTokenEstimate.toLocaleString(undefined, { maximumFractionDigits: 8 }) + ' ' + selected.symbol : '') : 'Customer chooses the payment amount'} · Preview opens checkout only; it does not pay.</small>
           </div>
 
           {ready && <>
