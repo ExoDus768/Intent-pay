@@ -28,7 +28,18 @@ export default function MerchantTools({ open = false, onClose = () => {}, tokens
     return aliases[raw] || raw;
   };
   const chainOf = t => normalizeChain(t?.blockchain);
-  const chains = useMemo(() => [...new Set(tokens.filter(t => t?.assetId && chainOf(t)).map(chainOf))].sort(), [tokens]);
+  // Only expose payout networks whose recipient format is validated by the backend.
+  // BTC and ZEC remain in the raw API registry, but are not payout choices yet.
+  const validatedPayoutChains = new Set([
+    'near', 'solana',
+    'eth', 'ethereum', 'base', 'arb', 'arbitrum', 'op', 'optimism',
+    'polygon', 'bsc', 'bnb', 'avax', 'avalanche', 'gnosis', 'scroll',
+    'aurora', 'bera', 'berachain', 'fantom', 'ftm', 'linea', 'zksync',
+    'mantle', 'mode', 'blast', 'celo', 'worldchain'
+  ]);
+  const chains = useMemo(() => [...new Set(
+    tokens.filter(t => t?.assetId && validatedPayoutChains.has(chainOf(t))).map(chainOf)
+  )].sort(), [tokens]);
   const payoutTokens = useMemo(() => tokens
     .filter(t => t?.assetId && destinationChain && chainOf(t) === destinationChain)
     .sort((a, b) => String(a.symbol || '').localeCompare(String(b.symbol || ''))), [tokens, destinationChain]);
