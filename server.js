@@ -199,6 +199,7 @@ function cleanHistoryEntries(entries) {
   return entries.slice(0, 100).filter(item => item && typeof item.id === 'string' && item.id.length <= 180).map(item => ({
     id: item.id,
     merchant: String(item.merchant || 'Merchant payment').slice(0, 100),
+    purpose: String(item.purpose || '').slice(0, 160),
     sourceNetwork: String(item.sourceNetwork || '').slice(0, 60),
     sourceToken: String(item.sourceToken || '').slice(0, 30),
     destinationNetwork: String(item.destinationNetwork || '').slice(0, 60),
