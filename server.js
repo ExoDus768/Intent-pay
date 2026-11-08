@@ -434,11 +434,32 @@ app.post('/api/lifi/quote', async (req, res) => {
         deadline: new Date(Date.now() + 2 * 60 * 1000).toISOString(),
         timeEstimate: estimate.executionDuration
       },
-      lifi: { tool: data.toolDetails?.name || data.tool, route: data.includedSteps || [] }
+      lifi: { tool: data.toolDetails?.name || data.tool, bridge: data.toolDetails?.key || data.toolDetails?.name || data.tool, fromChain: originChainId, toChain: destinationChainId, route: data.includedSteps || [] }
     });
   } catch (error) {
     res.status(error.status || 502).json({ error: error.message || 'LI.FI could not quote this EVM route.' });
   }
+});
+
+app.get('/api/lifi/status', async (req, res) => {
+  try {
+    const { txHash, fromChain, toChain, bridge } = req.query;
+    if (typeof txHash !== 'string' || !/^0x[a-fA-F0-9]{64}$/.test(txHash) ||
+        !/^\\d+$/.test(String(fromChain || '')) || !/^\\d+$/.test(String(toChain || ''))) {
+      return res.status(400).json({ error: 'A valid transaction hash and EVM chain IDs are required.' });
+    }
+    const params = new URLSearchParams({ txHash, fromChain: String(fromChain), toChain: String(toChain) });
+    if (typeof bridge === 'string' && bridge) params.set('bridge', bridge);
+    const headers = { Accept: 'application/json' };
+    if (process.env.LIFI_API_KEY) headers['x-lifi-api-key'] = process.env.LIFI_API_KEY;
+    const response = await fetch('https://li.quest/v1/status?' + params.toString(), { headers });
+    const raw = await response.text();
+    let data = {};
+    try { data = raw ? JSON.parse(raw) : {}; } catch { data = { message: raw }; }
+    if (!response.ok) return res.status(response.status).json({ error: data.message || data.error || 'Could not read LI.FI payment status.' });
+    res.set('Cache-Control', 'no-store');
+    res.json(data);
+  } catch (error) { res.status(502).json({ error: error.message || 'Could not read LI.FI payment status.' }); }
 });
 
 app.post('/api/relay/quote', async (req, res) => {
