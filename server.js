@@ -523,10 +523,8 @@ app.post('/api/quote', quoteLimiter, async (req, res) => {
       method: 'POST', body: JSON.stringify({ ...request, dry: true })
     });
     const dryInputUsd = Number(dryData?.quote?.amountInUsd);
-    if (!Number.isFinite(dryInputUsd) || dryInputUsd < 0.01) {
-      return res.status(400).json({ error: Number.isFinite(dryInputUsd)
-        ? 'Minimum payment amount is $0.01 USD equivalent.'
-        : '1Click did not return a valid USD input estimate, so the $0.01 minimum cannot be verified. Please try again.' });
+    if (!Number.isFinite(dryInputUsd) || dryInputUsd <= 0) {
+      return res.status(400).json({ error: '1Click did not return a valid positive USD input estimate. Please try again.' });
     }
     let data = dryData;
     if (req.body?.dry !== true) {
@@ -534,8 +532,8 @@ app.post('/api/quote', quoteLimiter, async (req, res) => {
         method: 'POST', body: JSON.stringify({ ...request, dry: false })
       });
       const committedInputUsd = Number(data?.quote?.amountInUsd);
-      if (!Number.isFinite(committedInputUsd) || committedInputUsd < 0.01) {
-        return res.status(409).json({ error: 'The live quote moved below the $0.01 minimum before a deposit address could be issued. Please request a fresh quote.' });
+      if (!Number.isFinite(committedInputUsd) || committedInputUsd <= 0) {
+        return res.status(409).json({ error: 'The live quote returned an invalid or zero USD input amount. Please request a fresh quote.' });
       }
       if (!data?.quote?.depositAddress || !data?.quote?.amountIn) {
         return res.status(502).json({ error: '1Click returned an incomplete committed quote. No payment should be sent.' });
@@ -612,8 +610,8 @@ app.post('/api/lifi/quote', lifiQuoteLimiter, async (req, res) => {
       return res.status(502).json({ error: 'LI.FI returned an incomplete transaction quote. No payment should be sent.' });
     }
     const inputUsd = Number(estimate.fromAmountUSD);
-    if (!Number.isFinite(inputUsd) || inputUsd < 0.01) {
-      return res.status(400).json({ error: 'LI.FI could not verify the $0.01 minimum for this payment.' });
+    if (!Number.isFinite(inputUsd) || inputUsd <= 0) {
+      return res.status(400).json({ error: 'LI.FI did not return a valid positive USD input amount for this payment.' });
     }
     res.json({
       provider: 'lifi', transactionRequest: tx, approvalAddress: estimate.approvalAddress || null,
