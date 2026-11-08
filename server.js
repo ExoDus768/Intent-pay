@@ -379,7 +379,7 @@ const EVM_CHAIN_IDS = {
 app.post('/api/lifi/quote', async (req, res) => {
   try {
     const { originAsset, destinationAsset, amount, user, recipient, fixedOutput = false } = req.body || {};
-    if (!originAsset || !destinationAsset || !/^\\d+$/.test(String(amount || '')) ||
+    if (!originAsset || !destinationAsset || !/^\d+$/.test(String(amount || '')) ||
         !isAddress(user || '') || !isAddress(recipient || '')) {
       return res.status(400).json({ error: 'Valid EVM assets, wallet addresses, and token amount are required.' });
     }
@@ -445,7 +445,7 @@ app.get('/api/lifi/status', async (req, res) => {
   try {
     const { txHash, fromChain, toChain, bridge } = req.query;
     if (typeof txHash !== 'string' || !/^0x[a-fA-F0-9]{64}$/.test(txHash) ||
-        !/^\\d+$/.test(String(fromChain || '')) || !/^\\d+$/.test(String(toChain || ''))) {
+        !/^\d+$/.test(String(fromChain || '')) || !/^\d+$/.test(String(toChain || ''))) {
       return res.status(400).json({ error: 'A valid transaction hash and EVM chain IDs are required.' });
     }
     const params = new URLSearchParams({ txHash, fromChain: String(fromChain), toChain: String(toChain) });
@@ -468,7 +468,7 @@ app.post('/api/direct-payment/verify', async (req, res) => {
   const { txHash, chainId, assetId, sender, recipient, amount } = req.body || {};
   const config = EVM_CHAIN_CONFIG[Number(chainId)];
   if (!config || typeof txHash !== 'string' || !/^0x[a-fA-F0-9]{64}$/.test(txHash) ||
-      typeof assetId !== 'string' || typeof amount !== 'string' || !/^\\d+$/.test(amount) ||
+      typeof assetId !== 'string' || typeof amount !== 'string' || !/^\d+$/.test(amount) ||
       !isAddress(sender || '') || !isAddress(recipient || '') || BigInt(amount) <= 0n) {
     return res.status(400).json({ verified: false, error: 'A valid transaction hash, supported chain, token, sender, recipient, and amount are required.' });
   }
