@@ -315,7 +315,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
       return undefined;
     }
     if (!historySyncRequested) {
-      setHistoryAuth({ account: customerAccount, token: '', status: 'idle', error: '' });
+      if (historyAuth.account !== customerAccount) setHistoryAuth({ account: customerAccount, token: '', status: 'idle', error: '' });
       return undefined;
     }
     const account = customerAccount;
