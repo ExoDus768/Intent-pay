@@ -13,6 +13,7 @@ export default function MerchantTools({ open = false, onClose = () => {}, tokens
   const [error, setError] = useState('');
   const [qrDataUrl, setQrDataUrl] = useState('');
   const [qrError, setQrError] = useState('');
+  const [nearAccountStatus, setNearAccountStatus] = useState('idle');
 
   const chainOf = t => String(t?.blockchain || '').trim().toLowerCase();
   const chains = useMemo(() => [...new Set(tokens.filter(t => t?.assetId && chainOf(t)).map(chainOf))].sort(), [tokens]);
@@ -20,9 +21,39 @@ export default function MerchantTools({ open = false, onClose = () => {}, tokens
     .filter(t => t?.assetId && destinationChain && chainOf(t) === destinationChain)
     .sort((a, b) => String(a.symbol || '').localeCompare(String(b.symbol || ''))), [tokens, destinationChain]);
   const selected = tokens.find(t => String(t.assetId) === String(destinationAsset) && chainOf(t) === destinationChain);
-  const addressValid = selected?.blockchain?.toLowerCase() === 'near'
-    ? /^[a-z0-9]+([._-][a-z0-9]+)*$/.test(recipient.trim())
-    : /^0x[a-fA-F0-9]{40}$/.test(recipient.trim());
+  const isNearPayout = selected?.blockchain?.toLowerCase() === 'near';
+  const nearAccountFormatValid = /^[a-z0-9]+([._-][a-z0-9]+)*$/.test(recipient.trim()) && recipient.trim().length >= 2 && recipient.trim().length <= 64;
+  const addressValid = isNearPayout ? nearAccountFormatValid && nearAccountStatus === 'registered' : /^0x[a-fA-F0-9]{40}$/.test(recipient.trim());
+
+  useEffect(() => {
+    if (!isNearPayout || !nearAccountFormatValid) {
+      setNearAccountStatus('idle');
+      return undefined;
+    }
+    let active = true;
+    setNearAccountStatus('checking');
+    const timer = setTimeout(async () => {
+      try {
+        const response = await fetch('https://rpc.mainnet.near.org', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 'xoduspay-account-check',
+            method: 'query',
+            params: { request_type: 'view_account', finality: 'final', account_id: recipient.trim() }
+          })
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error('NEAR account lookup failed');
+        if (!active) return;
+        setNearAccountStatus(data.result?.amount !== undefined ? 'registered' : 'unregistered');
+      } catch {
+        if (active) setNearAccountStatus('unavailable');
+      }
+    }, 450);
+    return () => { active = false; clearTimeout(timer); };
+  }, [isNearPayout, nearAccountFormatValid, recipient]);
   const fixedTokenEstimate = selected && Number(selected.price) > 0 && Number(fixedAmount) > 0 ? Number(fixedAmount) / Number(selected.price) : null;
   const ready = Boolean(selected && addressValid && (mode === 'variable' || (fixedAmount && Number(fixedAmount) >= 0.01)));
   const config = useMemo(() => {
@@ -110,8 +141,13 @@ export default function MerchantTools({ open = false, onClose = () => {}, tokens
             {payoutTokens.length === 0 && <p className="merchant-error">No payout tokens are currently available for this network in the live NEAR Intents registry. Choose another network.</p>}
           </> : <p className="merchant-hint">Choose a payout network first. Only tokens supported on that network will appear here.</p>}
           <label htmlFor="intentpay-recipient">Your receiving wallet address</label>
-          <input id="intentpay-recipient" value={recipient} onChange={e => setRecipient(e.target.value.trim())} placeholder={selected?.blockchain?.toLowerCase() === 'near' ? 'merchant.near' : '0x…'} autoCapitalize="none" autoCorrect="off" spellCheck={false} />
-          {recipient && selected && !addressValid && <p className="merchant-error">Enter a valid {selected.blockchain?.toLowerCase() === 'near' ? 'NEAR account ID' : 'EVM wallet address'} for this payout network.</p>}
+          <input id="intentpay-recipient" value={recipient} onChange={e => setRecipient(isNearPayout ? e.target.value.toLowerCase().trim() : e.target.value.trim())} placeholder={isNearPayout ? 'merchant.near' : '0x…'} autoCapitalize="none" autoCorrect="off" spellCheck={false} />
+          {recipient && selected && isNearPayout && nearAccountStatus === 'checking' && <p className="merchant-hint">Checking NEAR mainnet for this account…</p>}
+          {recipient && selected && isNearPayout && nearAccountStatus === 'registered' && <p className="merchant-notice" role="status">✓ Registered NEAR account detected and verified on mainnet.</p>}
+          {recipient && selected && isNearPayout && nearAccountStatus === 'unregistered' && <p className="merchant-error" role="alert">This NEAR account was not found on mainnet. Check the account ID.</p>}
+          {recipient && selected && isNearPayout && nearAccountStatus === 'unavailable' && <p className="merchant-error" role="alert">Could not verify this account with NEAR mainnet. Try again shortly.</p>}
+          {recipient && selected && isNearPayout && nearAccountStatus === 'idle' && !nearAccountFormatValid && <p className="merchant-error">Enter a valid lowercase NEAR account ID (2–64 characters).</p>}
+          {recipient && selected && !isNearPayout && !addressValid && <p className="merchant-error">Enter a valid EVM wallet address for this payout network.</p>}
 
           <label htmlFor="intentpay-button-label">Button text</label>
           <input id="intentpay-button-label" value={buttonLabel} onChange={e => setButtonLabel(e.target.value)} maxLength={32} placeholder="Pay with crypto" />
