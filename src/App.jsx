@@ -426,38 +426,9 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
     } catch { setNotice('Payment submitted, but transaction history could not be saved.'); }
   }
 
-  function recoverKnownLifiPayment() {
-    if (!customerAccount || !historyAuth.token || historyAuth.status !== 'ready') {
-      setNotice('First tap “Sign once to sync across devices”, then recover this payment.');
-      return;
-    }
-    const hash = '0xb928f90f0ab66270365b8253dd6d0337f4bb6235bb58fd0758e542ffc32f7bb9';
-    saveCustomerHistory({
-      id: 'lifi:' + hash,
-      account: customerAccount,
-      merchant: 'Merchant payment',
-      sourceNetwork: 'BNB Chain',
-      sourceToken: '—',
-      amountPaid: '—',
-      destinationNetwork: 'Base',
-      destinationToken: 'KAITO',
-      amountReceived: '0.5524751',
-      transactionHash: hash,
-      provider: 'LI.FI',
-      status: 'COMPLETED',
-      fixedAmount: true,
-      createdAt: '2026-11-08T11:18:50.000Z',
-      updatedAt: new Date().toISOString()
-    });
-    setNotice('Your verified LI.FI payment has been added to this wallet’s transaction history.');
-  }
-
   function recordCurrentPayment(status, hash = txHash, paymentQuote = quote) {
     if (!paymentQuote?.quote || !origin || !destination || !customerAccount) return;
-    const isLifiPayment = paymentQuote.provider === 'lifi';
-    const paymentId = isLifiPayment
-      ? (hash ? 'lifi:' + String(hash).toLowerCase() : '')
-      : paymentQuote.quote.depositAddress;
+    const paymentId = paymentQuote.quote.depositAddress;
     if (!paymentId) return;
     saveCustomerHistory({
       id: paymentId,
@@ -472,7 +443,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
       amountReceived: paymentQuote.quote.amountOutFormatted || (paymentQuote.quote.amountOut != null ? formatUnits(paymentQuote.quote.amountOut, Number(destination.decimals || 0)) : ''),
       transactionHash: hash || '',
       depositAddress: paymentQuote.quote.depositAddress || '',
-      provider: isLifiPayment ? 'LI.FI' : 'NEAR Intents',
+      provider: 'NEAR Intents',
       status: status || 'PROCESSING',
       fixedAmount: Boolean(isFixedWidgetCheckout)
     });
@@ -1172,8 +1143,8 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
         {gasEstimate?.kind === 'evm' && <p className="helper-text">{gasEstimate.label}. The final fee can change before confirmation; your wallet shows the amount to approve.</p>}
         {gasEstimate?.kind === 'near' && <p className="helper-text">NEAR network gas is paid separately from your NEAR balance. Review the final fee in your NEAR wallet before approving.</p>}
         {gasEstimate?.kind === 'unavailable' && <p className="helper-text">Could not estimate gas: {gasEstimate.label}. Your wallet will show the required network fee before you sign.</p>}
-        <div className="quote-row"><span>Routing</span><strong>{quote.provider === 'lifi' ? 'LI.FI · EVM fallback' : quote.directEvm ? 'Direct EVM · same token and network' : 'NEAR Intents · 1Click'}</strong></div><div className="quote-row"><span>Merchant address</span><strong>{short(recipient)}</strong></div>
-        <p className="helper-text">{quote.provider === 'lifi' ? 'LI.FI is used only as a secondary EVM-to-EVM route when NEAR Intents cannot quote. Review the route and wallet approvals carefully; settlement is confirmed separately.' : quote.directEvm ? 'This fallback does not convert tokens or move funds cross-chain. The merchant must accept this exact token on this exact network. Payment is marked successful only after server-side on-chain verification.' : 'NEAR Intents calculates the conversion and delivery amount shown in this quote. Network gas is separate and paid to the source blockchain.'}</p>
+        <div className="quote-row"><span>Routing</span><strong>NEAR Intents · 1Click</strong></div><div className="quote-row"><span>Merchant address</span><strong>{short(recipient)}</strong></div>
+        <p className="helper-text">NEAR Intents calculates the conversion and delivery amount shown in this quote. Network gas is separate and paid to the source blockchain.</p>
         {quote.quote.minAmountIn && <div className="quote-row"><span>Minimum input</span><strong>{formatUnits(quote.quote.minAmountIn, Number(origin?.decimals || 0))} {origin?.symbol}</strong></div>}
         {quote.quote.maxAmountIn && <div className="quote-row"><span>Maximum input</span><strong>{formatUnits(quote.quote.maxAmountIn, Number(origin?.decimals || 0))} {origin?.symbol}</strong></div>}
         <div className="quote-row"><span>Estimated time</span><strong>{quote.quote.timeEstimate ? Math.ceil(quote.quote.timeEstimate / 60) + ' min' : 'Provider estimate unavailable'}</strong></div><div className="quote-row quote-countdown-row"><span>Quote expires in</span><strong className={quoteExpired ? 'quote-countdown expired' : 'quote-countdown'}>{quoteCountdownLabel}{quoteExpired ? ' · Expired' : quoteSecondsRemaining !== null ? ' remaining' : ''}</strong></div>
@@ -1189,7 +1160,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
     </section>
     {checkoutOnly && <section className="customer-history">
       <div className="customer-history-head"><div><div className="eyebrow">YOUR ACTIVITY</div><h2>Transaction history</h2><p>Payments made by this wallet. Sign with the wallet to sync across devices.</p></div><span className="history-count">{customerHistory.length} {customerHistory.length === 1 ? 'payment' : 'payments'}</span></div>
-      {!customerAccount ? <p className="history-empty">Connect the wallet you used to pay to view its transaction history.</p> : <><button type="button" className="secondary" onClick={() => setHistorySyncRequested(true)} disabled={historyAuth.status === 'signing'}>{historyAuth.status === 'signing' ? 'Verifying wallet…' : historyAuth.status === 'ready' ? 'History synced' : 'Sign once to sync across devices'}</button>{historyAuth.status === 'error' && <p className="history-empty">History sync needs verification: {historyAuth.error}</p>}{historyAuth.status === 'ready' && <button type="button" className="secondary" onClick={recoverKnownLifiPayment}>Recover my Nov 8 LI.FI payment</button>}{customerHistory.length === 0 ? <p className="history-empty">No payments recorded for this wallet yet.</p> : <div className="history-list">{customerHistory.map(item => <article className="history-item" key={item.id}>
+      {!customerAccount ? <p className="history-empty">Connect the wallet you used to pay to view its transaction history.</p> : <><button type="button" className="secondary" onClick={() => setHistorySyncRequested(true)} disabled={historyAuth.status === 'signing'}>{historyAuth.status === 'signing' ? 'Verifying wallet…' : historyAuth.status === 'ready' ? 'History synced' : 'Sign once to sync across devices'}</button>{historyAuth.status === 'error' && <p className="history-empty">History sync needs verification: {historyAuth.error}</p>}{customerHistory.length === 0 ? <p className="history-empty">No payments recorded for this wallet yet.</p> : <div className="history-list">{customerHistory.map(item => <article className="history-item" key={item.id}>
         <div className="history-item-top"><strong>{item.merchant || 'Merchant payment'}</strong><span className={'history-status status-' + String(item.status || 'processing').toLowerCase()}>{String(item.status || 'PROCESSING').replaceAll('_', ' ')}</span></div>
         {item.purpose && <div className="history-route"><strong>Purpose:</strong> {item.purpose}</div>}
         <div className="history-amount">{item.amountPaid || '—'} {item.sourceToken || ''}<span>→</span>{item.amountReceived || '—'} {item.destinationToken || ''}</div>
