@@ -63,7 +63,7 @@ async function oneClick(path, options = {}, authenticated = true) {
       providerMessage: String(data.message || data.error || 'No provider message').slice(0, 500)
     });
     const providerMessage = String(data.message || data.error || '');
-    const minimumMatch = providerMessage.match(/minimum swap amount is\\s*\\$?([\\d,.]+)/i);
+    const minimumMatch = providerMessage.match(/minimum swap amount is\s*\$?([\d,.]+)/i);
     const userMessage = minimumMatch
       ? `NEAR Intents currently requires at least ${minimumMatch[1]} for this route. Your payment is below the provider's temporary minimum. No deposit address was created; try a supported route or a larger amount only if you choose to.`
       : `Payment provider rejected the quote (HTTP ${response.status}). No deposit address was created. Please check the selected assets and try again.`;
