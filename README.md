@@ -103,8 +103,9 @@ XoDuspay is a hackathon prototype, not an audited payment processor.
 
 Never commit API secrets, wallet private keys or seed phrases. Use your hosting provider's encrypted environment-variable settings. Do not accept customer payments until the full flow has been tested and independently reviewed.
 
-## Relay secondary routing
+## LI.FI secondary routing
+XoDuspay uses NEAR Intents / 1Click as its primary checkout route. LI.FI is a secondary fallback only for supported EVM-to-EVM payments when 1Click cannot return a valid quote. NEAR-origin and NEAR-destination payments continue through NEAR Intents; LI.FI is not used for those routes.
 
-XoDuspay uses NEAR Intents / 1Click as its primary checkout route. Relay is an optional secondary route for EVM-to-EVM payments when the primary provider cannot quote a payment. Relay is not used for NEAR-origin or NEAR-destination routes.
+The fallback requests a live LI.FI quote, asks the customer to approve an ERC-20 allowance when required, submits the quoted EVM transaction from the customer's wallet, and polls LI.FI status for destination settlement. The source-chain transaction alone is never treated as completed payment. LI.FI may also reject small payments when no executable route or sufficient liquidity exists.
 
-Configure `RELAY_API_KEY` as a server-side Vercel environment variable. Never expose it in client-side code. Relay quote responses contain executable transaction/signature steps; these must be executed and status-verified before a payment is marked successful. A quote alone is not proof of payment.
+An API key is optional for initial integration. To raise rate limits, obtain a free key through the [LI.FI Partner Portal](https://portal.li.fi/) and add it as the server-only `LIFI_API_KEY` environment variable. Never expose it in browser code.
