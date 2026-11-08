@@ -78,6 +78,7 @@ XoDuspay uses the official NEAR Intents 1Click mainnet endpoint. NEAR Wallet Sel
 ## Environment variables
 
 - ONECLICK_JWT: server-only 1Click authentication token
+- XODUSPAY_HISTORY_SECRET: optional wallet-history signing secret (the legacy INTENTPAY_HISTORY_SECRET remains supported for existing deployments)
 - APP_ORIGIN: optional comma-separated allowed browser origins
 - PORT: Express port (defaults to 3001)
 - VITE_WALLETCONNECT_PROJECT_ID: public WalletConnect / Reown project ID used by the browser bundle
