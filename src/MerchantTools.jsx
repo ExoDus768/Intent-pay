@@ -4,6 +4,7 @@ import QRCode from 'qrcode';
 export default function MerchantTools({ open = false, onClose = () => {}, tokens = [], page = false }) {
   const [mode, setMode] = useState('variable');
   const [merchantName, setMerchantName] = useState('');
+  const [paymentPurpose, setPaymentPurpose] = useState('');
   const [destinationChain, setDestinationChain] = useState('');
   const [destinationAsset, setDestinationAsset] = useState('');
   const [recipient, setRecipient] = useState('');
@@ -55,17 +56,18 @@ export default function MerchantTools({ open = false, onClose = () => {}, tokens
     return () => { active = false; clearTimeout(timer); };
   }, [isNearPayout, nearAccountFormatValid, recipient]);
   const fixedTokenEstimate = selected && Number(selected.price) > 0 && Number(fixedAmount) > 0 ? Number(fixedAmount) / Number(selected.price) : null;
-  const ready = Boolean(selected && addressValid && (mode === 'variable' || (fixedAmount && Number(fixedAmount) >= 0.01)));
+  const ready = Boolean(merchantName.trim() && paymentPurpose.trim() && selected && addressValid && (mode === 'variable' || (fixedAmount && Number(fixedAmount) >= 0.01)));
   const config = useMemo(() => {
     if (!ready) return null;
     const params = new URLSearchParams({
       merchantAsset: destinationAsset,
       merchantRecipient: recipient.trim(),
       merchantName: merchantName.trim().slice(0, 80),
+      merchantPurpose: paymentPurpose.trim().slice(0, 160),
       ...(mode === 'fixed' ? { merchantAmountUsd: fixedAmount } : {})
     });
     return window.location.origin + '/checkout?' + params.toString();
-  }, [ready, destinationAsset, recipient, merchantName, mode, fixedAmount]);
+  }, [ready, destinationAsset, recipient, merchantName, paymentPurpose, mode, fixedAmount]);
   const embed = config
     ? '<button type="button" data-intentpay-checkout data-intentpay-url="' + config + '">' + buttonLabel.trim() + '</button>\n<script src="' + window.location.origin + '/intentpay.js" defer></script>'
     : '';
@@ -108,8 +110,10 @@ export default function MerchantTools({ open = false, onClose = () => {}, tokens
             <p>Configure where payments should arrive, choose whether customers enter an amount or pay a fixed price, then copy the button code into your website.</p>
           </div>
 
-          <label htmlFor="intentpay-merchant-name">Business or payment name <span>(optional)</span></label>
-          <input id="intentpay-merchant-name" value={merchantName} onChange={e => setMerchantName(e.target.value)} placeholder="e.g. Acme Store" maxLength={80} />
+          <label htmlFor="intentpay-merchant-name">Merchant or business name <span>(required)</span></label>
+          <input id="intentpay-merchant-name" value={merchantName} onChange={e => setMerchantName(e.target.value)} placeholder="e.g. Acme Store" maxLength={80} required />
+          <label htmlFor="intentpay-payment-purpose">Purpose of payment <span>(required)</span></label>
+          <input id="intentpay-payment-purpose" value={paymentPurpose} onChange={e => setPaymentPurpose(e.target.value)} placeholder="e.g. Website design, order #1042, consultation" maxLength={160} required />
 
           <label>Payment amount</label>
           <div className="widget-mode-switch" role="group" aria-label="Choose payment amount type">
@@ -173,7 +177,7 @@ export default function MerchantTools({ open = false, onClose = () => {}, tokens
               {qrDataUrl && <a className="widget-qr-download" href={qrDataUrl} download="xoduspay-checkout-qr.png">Download QR code</a>}
             </div>
           </>}
-          {!ready && <p className="widget-setup-hint">Choose a payout network and token, enter your receiving wallet address, and complete the amount settings to generate your widget.</p>}
+          {!ready && <p className="widget-setup-hint">Enter the merchant name and payment purpose, choose a payout network and token, enter your receiving wallet address, and complete the amount settings to generate your widget.</p>}
           <p className="merchant-hint">The button opens XoDuspay's hosted mainnet checkout. Customers connect their own wallet, review the live NEAR Intents quote and network fee, then approve the payment. Your receiving address and payout asset are included in the public checkout link.</p>
           {error && <p className="merchant-error">{error}</p>}
           {notice && <p className="merchant-notice">{notice}</p>}
