@@ -73,6 +73,8 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
   const checkoutParams = new URLSearchParams(window.location.search);
   const merchantAssetParam = checkoutParams.get('merchantAsset') || '';
   const merchantRecipientParam = checkoutParams.get('merchantRecipient') || '';
+  const merchantNameParam = (checkoutParams.get('merchantName') || '').trim();
+  const merchantPurposeParam = (checkoutParams.get('merchantPurpose') || '').trim();
   const merchantAmountParam = checkoutParams.get('merchantAmountUsd') || checkoutParams.get('merchantAmount') || '';
   const isWidgetCheckout = Boolean(merchantAssetParam && merchantRecipientParam);
   const isFixedWidgetCheckout = isWidgetCheckout && Boolean(merchantAmountParam && Number(merchantAmountParam) > 0);
@@ -428,7 +430,8 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
     saveCustomerHistory({
       id: paymentId,
       account: customerAccount,
-      merchant: checkoutParams.get('merchantName') || 'Merchant payment',
+      merchant: merchantNameParam || 'Merchant payment',
+      purpose: merchantPurposeParam,
       sourceNetwork: chainLabel(tokenChain(origin)),
       sourceToken: origin.symbol || 'TOKEN',
       destinationNetwork: chainLabel(tokenChain(destination)),
@@ -791,6 +794,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
     const requestId = ++quoteRequestRef.current;
     setQuote(null); setGasEstimate(null); setTxHash(''); setSwapStatus('');
     if (isNearToken(origin || {}) ? !nearWallet : !wallet) return setNotice(isNearToken(origin || {}) ? 'Connect your NEAR wallet first. It will be used for refunds.' : 'Connect your EVM wallet first. The connected address is used for refunds.');
+    if (checkoutOnly && (!merchantNameParam || !merchantPurposeParam)) return setNotice('This checkout link is missing the required merchant name or payment purpose. Ask the merchant to regenerate the checkout link.');
     if (!origin || !destination || !amount || Number(amount) <= 0 || !recipient.trim()) return setNotice('Complete the origin token, destination token, amount, and merchant payout address.');
     if (recipient.startsWith('0x') && !isAddress(recipient)) return setNotice('The merchant EVM payout address is invalid.');
     if (!recipient.startsWith('0x') && !/^[a-z0-9._-]{2,64}$/i.test(recipient)) return setNotice('Enter a valid EVM address or NEAR account ID.');
@@ -1047,7 +1051,8 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
         saveCustomerHistory({
           id: 'direct:' + chainId + ':' + tx.hash.toLowerCase(),
           account: sender,
-          merchant: checkoutParams.get('merchantName') || 'Merchant payment',
+          merchant: merchantNameParam || 'Merchant payment',
+          purpose: merchantPurposeParam,
           sourceNetwork: chainLabel(tokenChain(origin)),
           sourceToken: origin.symbol || 'TOKEN',
           destinationNetwork: chainLabel(tokenChain(destination)),
@@ -1303,7 +1308,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
       {!configured && <p className="warning">NEAR Intents routing requires a server-side 1Click JWT. Same-chain, same-token EVM direct payments may still be available when the merchant accepts the selected token and network. Never paste API keys into this page.</p>}
       <p className="notice">{notice}</p>
       {quote?.quote && <div className="quote-card">
-        <div className="quote-title">Mainnet quote details</div>{fixedOutputCheckout && <p className="helper-text">Fixed USD checkout · target price ${Number(amount).toFixed(2)} USD. {quote.provider === 'lifi' ? 'LI.FI calculates the input amount required to deliver this target value.' : 'NEAR Intents calculates the input amount required to deliver the merchant\'s selected payout token at this value.'}</p>}
+        <div className="quote-title">Mainnet quote details</div>{isWidgetCheckout && <><div className="quote-row"><span>Merchant</span><strong>{merchantNameParam}</strong></div><div className="quote-row"><span>Purpose of payment</span><strong>{merchantPurposeParam}</strong></div></>}{fixedOutputCheckout && <p className="helper-text">Fixed USD checkout · target price ${Number(amount).toFixed(2)} USD. {quote.provider === 'lifi' ? 'LI.FI calculates the input amount required to deliver this target value.' : 'NEAR Intents calculates the input amount required to deliver the merchant\'s selected payout token at this value.'}</p>}
         <div className="quote-row"><span>Pay</span><strong>{quote.quote.amountInFormatted || formatUnits(quote.quote.amountIn, Number(origin?.decimals || 0))} {origin?.symbol}</strong></div>
         <div className="quote-row"><span>Estimated receive</span><strong>{(quote.quote.amountOutFormatted || quote.quote.amountOut) + ' ' + destination?.symbol}</strong></div>
         {quote.quote.amountInUsd && <div className="quote-row"><span>Payment value</span><strong>${Number(quote.quote.amountInUsd).toFixed(4)} USD</strong></div>}
@@ -1330,6 +1335,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
       <div className="customer-history-head"><div><div className="eyebrow">YOUR ACTIVITY</div><h2>Transaction history</h2><p>Payments made by this wallet. Sign with the wallet to sync across devices.</p></div><span className="history-count">{customerHistory.length} {customerHistory.length === 1 ? 'payment' : 'payments'}</span></div>
       {!customerAccount ? <p className="history-empty">Connect the wallet you used to pay to view its transaction history.</p> : <><button type="button" className="secondary" onClick={() => setHistorySyncRequested(true)} disabled={historyAuth.status === 'signing'}>{historyAuth.status === 'signing' ? 'Verifying wallet…' : historyAuth.status === 'ready' ? 'History synced' : 'Sign once to sync across devices'}</button>{historyAuth.status === 'error' && <p className="history-empty">History sync needs verification: {historyAuth.error}</p>}{historyAuth.status === 'ready' && <button type="button" className="secondary" onClick={recoverKnownLifiPayment}>Recover my Nov 8 LI.FI payment</button>}{customerHistory.length === 0 ? <p className="history-empty">No payments recorded for this wallet yet.</p> : <div className="history-list">{customerHistory.map(item => <article className="history-item" key={item.id}>
         <div className="history-item-top"><strong>{item.merchant || 'Merchant payment'}</strong><span className={'history-status status-' + String(item.status || 'processing').toLowerCase()}>{String(item.status || 'PROCESSING').replaceAll('_', ' ')}</span></div>
+        {item.purpose && <div className="history-route"><strong>Purpose:</strong> {item.purpose}</div>}
         <div className="history-amount">{item.amountPaid || '—'} {item.sourceToken || ''}<span>→</span>{item.amountReceived || '—'} {item.destinationToken || ''}</div>
         <div className="history-route">{item.sourceNetwork || 'Source'} → {item.destinationNetwork || 'Destination'}</div>
         {item.transactionHash && <div className="history-hash">Transaction: <code>{short(item.transactionHash)}</code></div>}
