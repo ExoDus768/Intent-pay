@@ -2,7 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import { createHash, createHmac, randomBytes, timingSafeEqual, createPublicKey, verify as verifySignature } from 'node:crypto';
-import { verifyMessage } from 'ethers';
+import { verifyMessage, JsonRpcProvider, Interface, isAddress } from 'ethers';
 import { get as getBlob, put as putBlob } from '@vercel/blob';
 
 const app = express();
@@ -351,6 +351,66 @@ app.post('/api/quote', async (req, res) => {
     res.json({ ...data, intentpay: { origin: input.origin, destination: input.destination } });
   } catch (error) {
     res.status(error.status || 502).json({ error: error.message });
+  }
+});
+
+const EVM_CHAIN_CONFIG = {
+  1: { key: 'eth', rpc: 'https://cloudflare-eth.com' },
+  8453: { key: 'base', rpc: 'https://mainnet.base.org' },
+  42161: { key: 'arb', rpc: 'https://arb1.arbitrum.io/rpc' },
+  10: { key: 'op', rpc: 'https://mainnet.optimism.io' },
+  137: { key: 'polygon', rpc: 'https://polygon-rpc.com' },
+  56: { key: 'bsc', rpc: 'https://bsc-dataseed.binance.org' },
+  43114: { key: 'avax', rpc: 'https://api.avax.network/ext/bc/C/rpc' },
+  100: { key: 'gnosis', rpc: 'https://rpc.gnosischain.com' },
+  534352: { key: 'scroll', rpc: 'https://rpc.scroll.io' },
+  1313161554: { key: 'aurora', rpc: 'https://mainnet.aurora.dev' },
+  80094: { key: 'bera', rpc: 'https://rpc.berachain.com' }
+};
+const transferLogInterface = new Interface(['event Transfer(address indexed from, address indexed to, uint256 value)']);
+
+app.post('/api/direct-payment/verify', async (req, res) => {
+  const { txHash, chainId, assetId, sender, recipient, amount } = req.body || {};
+  const config = EVM_CHAIN_CONFIG[Number(chainId)];
+  if (!config || typeof txHash !== 'string' || !/^0x[a-fA-F0-9]{64}$/.test(txHash) ||
+      typeof assetId !== 'string' || typeof amount !== 'string' || !/^\\d+$/.test(amount) ||
+      !isAddress(sender || '') || !isAddress(recipient || '') || BigInt(amount) <= 0n) {
+    return res.status(400).json({ verified: false, error: 'A valid transaction hash, supported chain, token, sender, recipient, and amount are required.' });
+  }
+  try {
+    const tokens = await getTokens();
+    const token = getToken(tokens, assetId);
+    if (!token || String(token.blockchain || '').toLowerCase() !== config.key ||
+        !isAddress(token.contractAddress || '') || token.contractAddress.toLowerCase() === '0x0000000000000000000000000000000000000000') {
+      return res.status(400).json({ verified: false, error: 'The token is not a supported ERC-20 asset on the selected network.' });
+    }
+    const provider = new JsonRpcProvider(config.rpc, Number(chainId), { staticNetwork: true });
+    const [network, tx, receipt, latestBlock] = await Promise.all([
+      provider.getNetwork(), provider.getTransaction(txHash), provider.getTransactionReceipt(txHash), provider.getBlockNumber()
+    ]);
+    if (Number(network.chainId) !== Number(chainId)) throw new Error('RPC network does not match the requested chain.');
+    if (!tx || !receipt) return res.status(202).json({ verified: false, pending: true, error: 'Transaction is not yet visible on the selected network.' });
+    if (receipt.status !== 1) return res.status(400).json({ verified: false, error: 'The transaction reverted on-chain.' });
+    if (tx.from.toLowerCase() !== sender.toLowerCase() ||
+        !tx.to || tx.to.toLowerCase() !== token.contractAddress.toLowerCase()) {
+      return res.status(400).json({ verified: false, error: 'Transaction sender or token contract does not match this checkout.' });
+    }
+    const confirmations = latestBlock - receipt.blockNumber + 1;
+    if (confirmations < 2) return res.status(202).json({ verified: false, pending: true, confirmations, error: 'Waiting for a second block confirmation.' });
+    const matchingTransfer = receipt.logs.some(log => {
+      if (log.address.toLowerCase() !== token.contractAddress.toLowerCase()) return false;
+      try {
+        const parsed = transferLogInterface.parseLog(log);
+        return parsed && parsed.args.from.toLowerCase() === sender.toLowerCase() &&
+          parsed.args.to.toLowerCase() === recipient.toLowerCase() &&
+          parsed.args.value === BigInt(amount);
+      } catch { return false; }
+    });
+    if (!matchingTransfer) return res.status(400).json({ verified: false, error: 'No exact ERC-20 transfer to the merchant was found in this transaction.' });
+    res.set('Cache-Control', 'no-store');
+    res.json({ verified: true, status: 'SUCCESS', txHash, chainId: Number(chainId), confirmations, token: token.symbol, recipient });
+  } catch (error) {
+    res.status(error.status || 502).json({ verified: false, error: error.message || 'Could not verify the EVM transaction.' });
   }
 });
 
