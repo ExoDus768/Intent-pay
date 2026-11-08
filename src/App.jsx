@@ -1030,6 +1030,16 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
         const signer = await provider.getSigner();
         const sender = await signer.getAddress();
         const amountAtomic = BigInt(quote.quote.amountIn);
+        setNotice('Preparing a one-time payment order for server-side verification…');
+        const orderResponse = await fetch('/api/direct-payment/order', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chainId, assetId: origin.assetId, sender,
+            recipient: recipient.trim(), amount: amountAtomic.toString()
+          })
+        });
+        const orderData = await orderResponse.json();
+        if (!orderResponse.ok || !orderData.orderId) throw new Error(orderData.error || 'Could not prepare a secure payment order.');
         setNotice('Direct payment: review the same-chain token, amount, and merchant address in your wallet.');
         const token = new Contract(origin.contractAddress, ERC20_ABI, signer);
         const tx = await token.transfer(recipient.trim(), amountAtomic);
@@ -1040,10 +1050,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
         if (!receipt || receipt.status !== 1) throw new Error('The direct payment transaction did not confirm successfully.');
         const verifyResponse = await fetch('/api/direct-payment/verify', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            txHash: tx.hash, chainId, assetId: origin.assetId,
-            sender, recipient: recipient.trim(), amount: amountAtomic.toString()
-          })
+          body: JSON.stringify({ txHash: tx.hash, orderId: orderData.orderId })
         });
         const verified = await verifyResponse.json();
         if (!verifyResponse.ok || verified.verified !== true) throw new Error(verified.error || 'The transaction could not be verified as the exact merchant payment. Do not retry until its status is checked.');
