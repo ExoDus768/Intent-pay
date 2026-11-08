@@ -36,7 +36,6 @@ app.use('/api', apiLimiter);
 const quoteLimiter = makeLimiter(60 * 1000, 12, 'Too many quote requests. Please wait before requesting another quote.');
 const historyChallengeLimiter = makeLimiter(10 * 60 * 1000, 5, 'Too many wallet sign-in challenges. Please try again later.');
 const historyVerifyLimiter = makeLimiter(10 * 60 * 1000, 10, 'Too many wallet signature attempts. Please try again later.');
-const lifiQuoteLimiter = makeLimiter(60 * 1000, 12, 'Too many fallback quote requests. Please wait.');
 const paymentActionLimiter = makeLimiter(60 * 1000, 20, 'Too many payment verification requests. Please wait.');
 
 let tokenCache = { value: null, expiresAt: 0 };
@@ -62,13 +61,18 @@ async function oneClick(path, options = {}, authenticated = true) {
       upstreamStatus: response.status,
       providerMessage: String(data.message || data.error || 'No provider message').slice(0, 500)
     });
-    const providerMessage = String(data.message || data.error || '');
-    const minimumMatch = providerMessage.match(/minimum swap amount is\s*\$?([\d,.]+)/i);
+    const firstError = Array.isArray(data.errors) ? data.errors[0] : null;
+    const providerMessage = String(
+      data.message || data.error?.message || data.error || firstError?.message ||
+      firstError?.detail || 'No provider message'
+    ).slice(0, 500);
+    const minimumMatch = providerMessage.match(/minimum(?:\s+swap)?\s+amount(?:\s+is|\s*:)?\s*\$?([\d,.]+)/i);
     const userMessage = minimumMatch
-      ? `NEAR Intents currently requires at least ${minimumMatch[1]} for this route. Your payment is below the provider's temporary minimum. No deposit address was created; try a supported route or a larger amount only if you choose to.`
-      : `Payment provider rejected the quote (HTTP ${response.status}). No deposit address was created. Please check the selected assets and try again.`;
+      ? `NEAR Intents currently reports a route minimum of ${minimumMatch[1]}. No deposit address was created. Try another API-supported route or amount if you choose.`
+      : `NEAR Intents rejected this quote (HTTP ${response.status}). No deposit address was created. ${providerMessage}`;
     const error = new Error(userMessage);
     error.status = 502;
+    error.upstreamStatus = response.status;
     throw error;
   }
   return data;
@@ -547,9 +551,18 @@ app.post('/api/quote', quoteLimiter, async (req, res) => {
     };
     // Check the authoritative USD estimate with a dry quote first. Only create
     // a deposit address after the minimum has passed.
-    const dryData = await oneClick('/quote', {
-      method: 'POST', body: JSON.stringify({ ...request, dry: true })
-    });
+    let dryData;
+    try {
+      dryData = await oneClick('/quote', {
+        method: 'POST', body: JSON.stringify({ ...request, dry: true })
+      });
+    } catch (firstError) {
+      if (![502, 503, 504].includes(firstError.status)) throw firstError;
+      await new Promise(resolve => setTimeout(resolve, 900));
+      dryData = await oneClick('/quote', {
+        method: 'POST', body: JSON.stringify({ ...request, dry: true })
+      });
+    }
     const dryInputUsd = Number(dryData?.quote?.amountInUsd);
     if (!Number.isFinite(dryInputUsd) || dryInputUsd <= 0) {
       return res.status(400).json({ error: '1Click did not return a valid positive USD input estimate. Please try again.' });
@@ -570,210 +583,6 @@ app.post('/api/quote', quoteLimiter, async (req, res) => {
     res.json({ ...data, intentpay: { origin: input.origin, destination: input.destination } });
   } catch (error) {
     res.status(error.status || 502).json({ error: error.message });
-  }
-});
-
-const EVM_CHAIN_CONFIG = {
-  1: { keys: ['eth', 'ethereum'], rpc: 'https://cloudflare-eth.com' },
-  8453: { keys: ['base'], rpc: 'https://mainnet.base.org' },
-  42161: { keys: ['arb', 'arbitrum'], rpc: 'https://arb1.arbitrum.io/rpc' },
-  10: { keys: ['op', 'optimism'], rpc: 'https://mainnet.optimism.io' },
-  137: { keys: ['polygon'], rpc: 'https://polygon-rpc.com' },
-  56: { keys: ['bsc', 'bnb'], rpc: 'https://bsc-dataseed.binance.org' },
-  43114: { keys: ['avax', 'avalanche'], rpc: 'https://api.avax.network/ext/bc/C/rpc' },
-  100: { keys: ['gnosis'], rpc: 'https://rpc.gnosischain.com' },
-  534352: { keys: ['scroll'], rpc: 'https://rpc.scroll.io' },
-  1313161554: { keys: ['aurora'], rpc: 'https://mainnet.aurora.dev' },
-  80094: { keys: ['bera', 'berachain'], rpc: 'https://rpc.berachain.com' }
-};
-
-const EVM_CHAIN_IDS = {
-  eth: 1, ethereum: 1, base: 8453, arb: 42161, arbitrum: 42161,
-  op: 10, optimism: 10, polygon: 137, bsc: 56, bnb: 56,
-  avax: 43114, avalanche: 43114, gnosis: 100, scroll: 534352,
-  aurora: 1313161554, bera: 80094, berachain: 80094
-};
-
-app.post('/api/lifi/quote', lifiQuoteLimiter, async (req, res) => {
-  try {
-    const { originAsset, destinationAsset, amount, user, recipient, fixedOutput = false } = req.body || {};
-    if (!originAsset || !destinationAsset || !/^\d+$/.test(String(amount || '')) ||
-        !isAddress(user || '') || !isAddress(recipient || '')) {
-      return res.status(400).json({ error: 'Valid EVM assets, wallet addresses, and token amount are required.' });
-    }
-    const tokens = await getTokens();
-    const origin = getToken(tokens, originAsset);
-    const destination = getToken(tokens, destinationAsset);
-    if (!origin || !destination) return res.status(400).json({ error: 'Selected token is not in the live token registry.' });
-    const originChainId = EVM_CHAIN_IDS[String(origin.blockchain || '').toLowerCase()];
-    const destinationChainId = EVM_CHAIN_IDS[String(destination.blockchain || '').toLowerCase()];
-    if (!originChainId || !destinationChainId || !EVM_CHAIN_CONFIG[originChainId] || !EVM_CHAIN_CONFIG[destinationChainId]) {
-      return res.status(400).json({ error: 'LI.FI fallback is limited to supported EVM-to-EVM routes. NEAR routes stay on NEAR Intents.' });
-    }
-    const fromToken = origin.contractAddress || '0x0000000000000000000000000000000000000000';
-    const toToken = destination.contractAddress || '0x0000000000000000000000000000000000000000';
-    if ((origin.contractAddress && !isAddress(origin.contractAddress)) ||
-        (destination.contractAddress && !isAddress(destination.contractAddress))) {
-      return res.status(400).json({ error: 'Token registry returned an invalid EVM token contract.' });
-    }
-    const params = new URLSearchParams({
-      fromChain: String(originChainId), toChain: String(destinationChainId),
-      fromToken, toToken, [fixedOutput ? 'toAmount' : 'fromAmount']: String(amount), fromAddress: user,
-      toAddress: recipient, slippage: '0.01', order: 'RECOMMENDED', integrator: 'xoduspay'
-    });
-    const headers = { Accept: 'application/json' };
-    if (process.env.LIFI_API_KEY) headers['x-lifi-api-key'] = process.env.LIFI_API_KEY;
-    const response = await fetch('https://li.quest/v1/quote' + (fixedOutput ? '/toAmount' : '') + '?' + params.toString(), { headers });
-    const raw = await response.text();
-    let data = {};
-    try { data = raw ? JSON.parse(raw) : {}; } catch { data = { message: raw }; }
-    if (!response.ok) {
-      const error = new Error(data.message || data.error || 'LI.FI could not find an executable route for this amount.');
-      error.status = response.status;
-      throw error;
-    }
-    const estimate = data.estimate || {};
-    const tx = data.transactionRequest;
-    if (!tx?.to || !tx?.data || estimate.toAmount == null || !estimate.approvalAddress && origin.contractAddress) {
-      return res.status(502).json({ error: 'LI.FI returned an incomplete transaction quote. No payment should be sent.' });
-    }
-    const inputUsd = Number(estimate.fromAmountUSD);
-    if (!Number.isFinite(inputUsd) || inputUsd <= 0) {
-      return res.status(400).json({ error: 'LI.FI did not return a valid positive USD input amount for this payment.' });
-    }
-    res.json({
-      provider: 'lifi', transactionRequest: tx, approvalAddress: estimate.approvalAddress || null,
-      quote: {
-        amountIn: String(estimate.fromAmount ?? amount),
-        amountOut: String(estimate.toAmount),
-        amountInFormatted: estimate.fromAmount,
-        amountOutFormatted: estimate.toAmount,
-        amountInUsd: String(inputUsd),
-        deadline: new Date(Date.now() + 2 * 60 * 1000).toISOString(),
-        timeEstimate: estimate.executionDuration
-      },
-      lifi: { tool: data.toolDetails?.name || data.tool, bridge: data.toolDetails?.key || data.toolDetails?.name || data.tool, fromChain: originChainId, toChain: destinationChainId, route: data.includedSteps || [] }
-    });
-  } catch (error) {
-    res.status(error.status || 502).json({ error: error.message || 'LI.FI could not quote this EVM route.' });
-  }
-});
-
-app.get('/api/lifi/status', async (req, res) => {
-  try {
-    const { txHash, fromChain, toChain, bridge } = req.query;
-    if (typeof txHash !== 'string' || !/^0x[a-fA-F0-9]{64}$/.test(txHash) ||
-        !/^\d+$/.test(String(fromChain || '')) || !/^\d+$/.test(String(toChain || ''))) {
-      return res.status(400).json({ error: 'A valid transaction hash and EVM chain IDs are required.' });
-    }
-    const params = new URLSearchParams({ txHash, fromChain: String(fromChain), toChain: String(toChain) });
-    if (typeof bridge === 'string' && bridge) params.set('bridge', bridge);
-    const headers = { Accept: 'application/json' };
-    if (process.env.LIFI_API_KEY) headers['x-lifi-api-key'] = process.env.LIFI_API_KEY;
-    const response = await fetch('https://li.quest/v1/status?' + params.toString(), { headers });
-    const raw = await response.text();
-    let data = {};
-    try { data = raw ? JSON.parse(raw) : {}; } catch { data = { message: raw }; }
-    if (!response.ok) return res.status(response.status).json({ error: data.message || data.error || 'Could not read LI.FI payment status.' });
-    res.set('Cache-Control', 'no-store');
-    res.json(data);
-  } catch (error) { res.status(502).json({ error: error.message || 'Could not read LI.FI payment status.' }); }
-});
-
-const transferLogInterface = new Interface(['event Transfer(address indexed from, address indexed to, uint256 value)']);
-
-app.post('/api/direct-payment/order', paymentActionLimiter, async (req, res) => {
-  try {
-    const { chainId, assetId, sender, recipient, amount } = req.body || {};
-    const numericChainId = Number(chainId);
-    const config = EVM_CHAIN_CONFIG[numericChainId];
-    if (!config || typeof assetId !== 'string' || typeof amount !== 'string' ||
-        !/^\d+$/.test(amount) || BigInt(amount) <= 0n ||
-        !isAddress(sender || '') || !isAddress(recipient || '')) {
-      return res.status(400).json({ error: 'A supported EVM network, token, wallet, merchant address, and positive token amount are required.' });
-    }
-    const tokens = await getTokens();
-    const token = getToken(tokens, assetId);
-    if (!token || !config.keys.includes(String(token.blockchain || '').toLowerCase()) ||
-        !isAddress(token.contractAddress || '') || token.contractAddress.toLowerCase() === '0x0000000000000000000000000000000000000000') {
-      return res.status(400).json({ error: 'The selected token is not a supported ERC-20 asset on this network.' });
-    }
-    const orderId = randomBytes(24).toString('hex');
-    const now = Date.now();
-    const order = {
-      orderId, chainId: numericChainId, assetId,
-      sender: sender.toLowerCase(), recipient: recipient.toLowerCase(),
-      amount, createdAt: now, expiresAt: now + 10 * 60 * 1000
-    };
-    const stored = await putUniquePrivateRecord('direct-payment-orders/' + orderId + '.json', order);
-    if (!stored) return res.status(503).json({ error: 'Could not reserve a unique payment order. Please retry.' });
-    res.set('Cache-Control', 'no-store');
-    res.json({ orderId, expiresAt: order.expiresAt });
-  } catch (error) {
-    res.status(error.status || 502).json({ error: error.message || 'Could not create a direct-payment order.' });
-  }
-});
-
-app.post('/api/direct-payment/verify', paymentActionLimiter, async (req, res) => {
-  const { txHash, orderId } = req.body || {};
-  if (typeof txHash !== 'string' || !/^0x[a-fA-F0-9]{64}$/.test(txHash) ||
-      typeof orderId !== 'string' || !/^[a-f0-9]{48}$/.test(orderId)) {
-    return res.status(400).json({ verified: false, error: 'A valid transaction hash and payment order ID are required.' });
-  }
-  try {
-    const order = await readPrivateRecord('direct-payment-orders/' + orderId + '.json');
-    if (!order || order.orderId !== orderId) {
-      return res.status(404).json({ verified: false, error: 'Payment order not found. Create a fresh checkout order.' });
-    }
-    if (!Number.isFinite(order.expiresAt) || order.expiresAt < Date.now()) {
-      return res.status(410).json({ verified: false, error: 'This payment order expired. Create a fresh checkout order.' });
-    }
-    const config = EVM_CHAIN_CONFIG[Number(order.chainId)];
-    if (!config) return res.status(400).json({ verified: false, error: 'The payment order network is not supported.' });
-    const tokens = await getTokens();
-    const token = getToken(tokens, order.assetId);
-    if (!token || !config.keys.includes(String(token.blockchain || '').toLowerCase()) ||
-        !isAddress(token.contractAddress || '') || token.contractAddress.toLowerCase() === '0x0000000000000000000000000000000000000000') {
-      return res.status(400).json({ verified: false, error: 'The payment order token is no longer supported.' });
-    }
-    const provider = new JsonRpcProvider(config.rpc, Number(order.chainId), { staticNetwork: true });
-    const [network, tx, receipt, latestBlock] = await Promise.all([
-      provider.getNetwork(), provider.getTransaction(txHash), provider.getTransactionReceipt(txHash), provider.getBlockNumber()
-    ]);
-    if (Number(network.chainId) !== Number(order.chainId)) throw new Error('RPC network does not match the payment order network.');
-    if (!tx || !receipt) return res.status(202).json({ verified: false, pending: true, error: 'Transaction is not yet visible on the selected network.' });
-    if (receipt.status !== 1) return res.status(400).json({ verified: false, error: 'The transaction reverted on-chain.' });
-    if (tx.from.toLowerCase() !== order.sender ||
-        !tx.to || tx.to.toLowerCase() !== token.contractAddress.toLowerCase()) {
-      return res.status(400).json({ verified: false, error: 'Transaction sender or token contract does not match this payment order.' });
-    }
-    const confirmations = latestBlock - receipt.blockNumber + 1;
-    if (confirmations < 2) return res.status(202).json({ verified: false, pending: true, confirmations, error: 'Waiting for a second block confirmation.' });
-    const matchingTransfer = receipt.logs.some(log => {
-      if (log.address.toLowerCase() !== token.contractAddress.toLowerCase()) return false;
-      try {
-        const parsed = transferLogInterface.parseLog(log);
-        return parsed && parsed.args.from.toLowerCase() === order.sender &&
-          parsed.args.to.toLowerCase() === order.recipient &&
-          parsed.args.value === BigInt(order.amount);
-      } catch { return false; }
-    });
-    if (!matchingTransfer) return res.status(400).json({ verified: false, error: 'No exact ERC-20 transfer for this payment order was found.' });
-    const normalizedHash = txHash.toLowerCase();
-    const hashClaimed = await putUniquePrivateRecord(
-      'direct-payment-used-hashes/' + order.chainId + '-' + normalizedHash + '.json',
-      { orderId, txHash: normalizedHash, usedAt: Date.now() }
-    );
-    if (!hashClaimed) return res.status(409).json({ verified: false, error: 'This transaction hash has already been used for a checkout.' });
-    const orderClaimed = await putUniquePrivateRecord(
-      'direct-payment-used-orders/' + orderId + '.json',
-      { orderId, txHash: normalizedHash, usedAt: Date.now() }
-    );
-    if (!orderClaimed) return res.status(409).json({ verified: false, error: 'This payment order has already been completed or used.' });
-    res.set('Cache-Control', 'no-store');
-    res.json({ verified: true, status: 'SUCCESS', txHash, chainId: Number(order.chainId), confirmations, token: token.symbol, recipient: order.recipient });
-  } catch (error) {
-    res.status(error.status || 502).json({ verified: false, error: error.message || 'Could not verify the EVM transaction.' });
   }
 });
 
