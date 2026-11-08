@@ -1009,13 +1009,25 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
       const atomicAmount = BigInt(activeQuote.quote.amountIn);
       setNotice('Confirm the deposit transaction in your wallet. Check the network and amount carefully.');
 
+      // Preflight the exact transaction before opening the wallet confirmation.
+      // This catches wrong-chain, insufficient native gas, and token-call failures
+      // before the user is asked to approve a transfer.
       let tx;
       if (origin.contractAddress) {
         const token = new Contract(origin.contractAddress, ERC20_ABI, signer);
+        const balance = await token.balanceOf(wallet);
+        if (balance < atomicAmount) throw new Error('Insufficient ' + origin.symbol + ' balance for this deposit.');
+        await token.transfer.estimateGas(depositAddress, atomicAmount);
+        setNotice('Transaction checks passed. Confirm the token transfer in your wallet.');
         tx = await token.transfer(depositAddress, atomicAmount);
       } else {
+        const balance = await provider.getBalance(wallet);
+        if (balance < atomicAmount) throw new Error('Insufficient ' + origin.symbol + ' balance for the deposit and network gas.');
+        await provider.estimateGas({ from: wallet, to: depositAddress, value: atomicAmount });
+        setNotice('Transaction checks passed. Confirm the deposit in your wallet.');
         tx = await signer.sendTransaction({ to: depositAddress, value: atomicAmount });
       }
+      if (!tx?.hash) throw new Error('Your wallet returned without a transaction hash. The deposit was not confirmed as broadcast.');
       setTxHash(tx.hash);
       recordCurrentPayment('PROCESSING', tx.hash, activeQuote);
       setNotice('Transaction broadcast. Waiting for one network confirmation…');
@@ -1049,7 +1061,11 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
       }
       setNotice('The deposit is confirmed, but settlement is still pending. You can check status again; do not send a second payment.');
     } catch (e) {
-      setNotice(e.message || 'The payment step failed. If a transaction hash is shown, check its on-chain status before retrying.');
+      const walletMessage = e?.shortMessage || e?.info?.error?.message || e?.data?.message || e?.reason || e?.message || 'Unknown wallet error';
+      const walletCode = e?.code ? ' (' + e.code + ')' : '';
+      // A rejected/failed wallet request is not a payment. Keep the quote available
+      // for inspection, but never display success or invent a transaction hash.
+      setNotice('No transaction was broadcast. ' + walletMessage + walletCode + ' Check the wallet network, token balance, and native gas, then try again.');
     } finally { setBusy(false); }
   }
 
