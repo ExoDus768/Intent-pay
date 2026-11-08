@@ -790,7 +790,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
 
   useEffect(() => {
     const complete = Boolean(
-      configured && origin && destination && amount && Number(amount) > 0 &&
+      origin && destination && amount && Number(amount) > 0 &&
       recipient.trim() && (isNearToken(origin) ? nearWallet : wallet)
     );
     // Any changed checkout detail invalidates the old quote and requests a fresh one.
@@ -1105,7 +1105,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
         <div className="refund-note">Refund address: {isNearToken(origin || {}) ? (nearWallet ? short(nearWallet) : 'Connect NEAR wallet') : (wallet ? short(wallet) : 'Connect EVM wallet')}</div>
         <div className="quote-auto-state" role="status">{busy ? 'Getting your quote…' : quote ? 'Quote ready. Review it below.' : 'Your quote will be generated automatically when all selections are complete.'}</div>
       </form>
-      {!configured && <p className="warning">Mainnet payments are locked until the server has a valid 1Click JWT. Add it as a Vercel server environment variable. Never paste it into this page.</p>}
+      {!configured && <p className="warning">NEAR Intents routing requires a server-side 1Click JWT. Same-chain, same-token EVM direct payments may still be available when the merchant accepts the selected token and network. Never paste API keys into this page.</p>}
       <p className="notice">{notice}</p>
       {quote?.quote && <div className="quote-card">
         <div className="quote-title">Mainnet quote details</div>{fixedOutputCheckout && <p className="helper-text">Fixed USD checkout · target price ${Number(amount).toFixed(2)} USD. NEAR Intents calculates the input amount required to deliver the merchant's selected payout token at this value.</p>}
