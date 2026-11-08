@@ -355,17 +355,17 @@ app.post('/api/quote', async (req, res) => {
 });
 
 const EVM_CHAIN_CONFIG = {
-  1: { key: 'eth', rpc: 'https://cloudflare-eth.com' },
-  8453: { key: 'base', rpc: 'https://mainnet.base.org' },
-  42161: { key: 'arb', rpc: 'https://arb1.arbitrum.io/rpc' },
-  10: { key: 'op', rpc: 'https://mainnet.optimism.io' },
-  137: { key: 'polygon', rpc: 'https://polygon-rpc.com' },
-  56: { key: 'bsc', rpc: 'https://bsc-dataseed.binance.org' },
-  43114: { key: 'avax', rpc: 'https://api.avax.network/ext/bc/C/rpc' },
-  100: { key: 'gnosis', rpc: 'https://rpc.gnosischain.com' },
-  534352: { key: 'scroll', rpc: 'https://rpc.scroll.io' },
-  1313161554: { key: 'aurora', rpc: 'https://mainnet.aurora.dev' },
-  80094: { key: 'bera', rpc: 'https://rpc.berachain.com' }
+  1: { keys: ['eth', 'ethereum'], rpc: 'https://cloudflare-eth.com' },
+  8453: { keys: ['base'], rpc: 'https://mainnet.base.org' },
+  42161: { keys: ['arb', 'arbitrum'], rpc: 'https://arb1.arbitrum.io/rpc' },
+  10: { keys: ['op', 'optimism'], rpc: 'https://mainnet.optimism.io' },
+  137: { keys: ['polygon'], rpc: 'https://polygon-rpc.com' },
+  56: { keys: ['bsc', 'bnb'], rpc: 'https://bsc-dataseed.binance.org' },
+  43114: { keys: ['avax', 'avalanche'], rpc: 'https://api.avax.network/ext/bc/C/rpc' },
+  100: { keys: ['gnosis'], rpc: 'https://rpc.gnosischain.com' },
+  534352: { keys: ['scroll'], rpc: 'https://rpc.scroll.io' },
+  1313161554: { keys: ['aurora'], rpc: 'https://mainnet.aurora.dev' },
+  80094: { keys: ['bera', 'berachain'], rpc: 'https://rpc.berachain.com' }
 };
 const transferLogInterface = new Interface(['event Transfer(address indexed from, address indexed to, uint256 value)']);
 
@@ -380,7 +380,7 @@ app.post('/api/direct-payment/verify', async (req, res) => {
   try {
     const tokens = await getTokens();
     const token = getToken(tokens, assetId);
-    if (!token || String(token.blockchain || '').toLowerCase() !== config.key ||
+    if (!token || !config.keys.includes(String(token.blockchain || '').toLowerCase()) ||
         !isAddress(token.contractAddress || '') || token.contractAddress.toLowerCase() === '0x0000000000000000000000000000000000000000') {
       return res.status(400).json({ verified: false, error: 'The token is not a supported ERC-20 asset on the selected network.' });
     }
