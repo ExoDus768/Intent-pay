@@ -30,6 +30,22 @@ const tokenName = t => `${t.symbol || 'TOKEN'} · ${t.blockchain || 'Unknown cha
 const chainLabel = value => ({eth:'Ethereum',arb:'Arbitrum',op:'Optimism',avax:'Avalanche',bera:'Berachain'}[value] || String(value || '').split(/[-_ ]+/).map(x => x.charAt(0).toUpperCase() + x.slice(1)).join(' '));
 const TOKEN_PRIORITY = ['USDC','USDT','ETH','NEAR','DAI','WETH','WBTC','USDBC','USDE','FRAX','USDS'];
 const tokenPriority = t => { const i = TOKEN_PRIORITY.indexOf(String(t.symbol || '').toUpperCase()); return i < 0 ? TOKEN_PRIORITY.length : i; };
+const normalizeToken = token => {
+  if (!token || typeof token !== 'object' || !token.assetId) return null;
+  const explicitChain = String(token.blockchain || '').trim().toLowerCase();
+  const assetPrefix = String(token.assetId).match(/^nep141:([a-z0-9]+)-/i)?.[1]?.toLowerCase();
+  const blockchain = explicitChain || (assetPrefix ? ({bnb:'bsc',arb:'arbitrum',eth:'eth',sol:'solana'}[assetPrefix] || assetPrefix) : 'near');
+  const decimals = Number(token.decimals);
+  if (!Number.isInteger(decimals) || decimals < 0 || decimals > 255) return null;
+  return { ...token, blockchain, decimals };
+};
+const normalizeTokenList = data => {
+  let value = data;
+  for (let depth = 0; depth < 4 && !Array.isArray(value); depth++) {
+    value = value?.tokens || value?.data || value?.result || value?.assets;
+  }
+  return Array.isArray(value) ? value.map(normalizeToken).filter(Boolean) : [];
+};
 const short = (value = '') => value.length > 24 ? value.slice(0, 10) + '…' + value.slice(-8) : value;
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 const usdToTokenAtomic = (usdAmount, token) => {
@@ -278,8 +294,9 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
     fetch('/api/tokens').then(async r => {
       const data = await r.json();
       if (!r.ok) throw new Error(data.error || 'Could not load token registry.');
-      const list = Array.isArray(data) ? data : (data.tokens || data.data || []);
-      setTokens(list.filter(t => t.assetId && Number.isInteger(Number(t.decimals))));
+      const list = normalizeTokenList(data);
+      if (!list.length) throw new Error('The live NEAR Intents token registry returned no usable assets. Refresh and try again.');
+      setTokens(list);
     }).catch(e => setNotice(e.message)).finally(() => setLoadingTokens(false));
     return () => { active = false; };
   }, []);
