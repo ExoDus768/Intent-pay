@@ -30,7 +30,8 @@
     "@near-wallet-selector/hot-wallet": "^10.1.4",
     "@near-wallet-selector/sender": "^10.1.4",
     "@near-wallet-selector/meteor-wallet-app": "^10.1.4",
-    "buffer": "^6.0.3"
+    "buffer": "^6.0.3",
+    "express-rate-limit": "^8.0.1"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.4",
