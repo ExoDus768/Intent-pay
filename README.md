@@ -102,3 +102,9 @@ XoDuspay is a hackathon prototype, not an audited payment processor.
 ## Security
 
 Never commit API secrets, wallet private keys or seed phrases. Use your hosting provider's encrypted environment-variable settings. Do not accept customer payments until the full flow has been tested and independently reviewed.
+
+## Relay secondary routing
+
+XoDuspay uses NEAR Intents / 1Click as its primary checkout route. Relay is an optional secondary route for EVM-to-EVM payments when the primary provider cannot quote a payment. Relay is not used for NEAR-origin or NEAR-destination routes.
+
+Configure `RELAY_API_KEY` as a server-side Vercel environment variable. Never expose it in client-side code. Relay quote responses contain executable transaction/signature steps; these must be executed and status-verified before a payment is marked successful. A quote alone is not proof of payment.
