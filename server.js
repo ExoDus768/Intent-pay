@@ -57,8 +57,13 @@ async function oneClick(path, options = {}, authenticated = true) {
   let data = {};
   try { data = text ? JSON.parse(text) : {}; } catch { data = { message: text }; }
   if (!response.ok) {
-    const error = new Error(data.message || data.error || `1Click API returned HTTP ${response.status}`);
-    error.status = response.status;
+    console.error('[1Click] upstream request failed', {
+      path,
+      upstreamStatus: response.status,
+      providerMessage: String(data.message || data.error || 'No provider message').slice(0, 500)
+    });
+    const error = new Error(`Payment provider request failed (HTTP ${response.status}). Please try again.`);
+    error.status = 502;
     throw error;
   }
   return data;
@@ -157,6 +162,11 @@ function historySecret() {
   const secret = process.env.XODUSPAY_HISTORY_SECRET || process.env.INTENTPAY_HISTORY_SECRET;
   if (!secret) {
     const error = new Error('Wallet history authentication is not configured.');
+    error.status = 503;
+    throw error;
+  }
+  if (secret.length < 32) {
+    const error = new Error('XODUSPAY_HISTORY_SECRET must contain at least 32 characters.');
     error.status = 503;
     throw error;
   }
@@ -267,7 +277,9 @@ async function verifyNearHistorySignature({ wallet, message, nonce, signature, p
   });
   const data = await rpc.json();
   if (!rpc.ok || data.error) return false;
-  return (data.result?.keys || []).some(item => item.public_key === publicKey);
+  return (data.result?.keys || []).some(item =>
+    item.public_key === publicKey && item.access_key?.permission === 'FullAccess'
+  );
 }
 function normalizeHistoryDate(value, fallback) {
   if (value === undefined || value === null || value === '') return fallback;
@@ -358,6 +370,37 @@ async function writeWalletHistory(wallet, entries, etag) {
 function isBlobWriteConflict(error) {
   return [409, 412].includes(Number(error?.statusCode || error?.status)) ||
     /precondition|already exists|conflict/i.test(String(error?.name || '') + ' ' + String(error?.message || ''));
+}
+
+const localDirectPaymentRecords = new Map();
+async function putUniquePrivateRecord(pathname, value) {
+  if (!process.env.BLOB_READ_WRITE_TOKEN) {
+    if (isProduction) {
+      const error = new Error('Persistent payment-order protection is not configured. Set BLOB_READ_WRITE_TOKEN.');
+      error.status = 503;
+      throw error;
+    }
+    if (localDirectPaymentRecords.has(pathname)) return false;
+    localDirectPaymentRecords.set(pathname, value);
+    return true;
+  }
+  try {
+    await putBlob(pathname, JSON.stringify(value), {
+      access: 'private', contentType: 'application/json',
+      allowOverwrite: false, addRandomSuffix: false
+    });
+    return true;
+  } catch (error) {
+    if (isBlobWriteConflict(error)) return false;
+    throw error;
+  }
+}
+async function readPrivateRecord(pathname) {
+  if (!process.env.BLOB_READ_WRITE_TOKEN) return localDirectPaymentRecords.get(pathname) || null;
+  const blob = await getBlob(pathname, { access: 'private' });
+  if (!blob || blob.statusCode !== 200) return null;
+  const raw = await new Response(blob.stream).text();
+  return JSON.parse(raw || 'null');
 }
 async function updateWalletHistory(wallet, incoming) {
   // Compare-and-swap on the Blob ETag prevents concurrent devices from overwriting
@@ -608,31 +651,70 @@ app.get('/api/lifi/status', async (req, res) => {
 
 const transferLogInterface = new Interface(['event Transfer(address indexed from, address indexed to, uint256 value)']);
 
-app.post('/api/direct-payment/verify', paymentActionLimiter, async (req, res) => {
-  const { txHash, chainId, assetId, sender, recipient, amount } = req.body || {};
-  const config = EVM_CHAIN_CONFIG[Number(chainId)];
-  if (!config || typeof txHash !== 'string' || !/^0x[a-fA-F0-9]{64}$/.test(txHash) ||
-      typeof assetId !== 'string' || typeof amount !== 'string' || !/^\d+$/.test(amount) ||
-      !isAddress(sender || '') || !isAddress(recipient || '') || BigInt(amount) <= 0n) {
-    return res.status(400).json({ verified: false, error: 'A valid transaction hash, supported chain, token, sender, recipient, and amount are required.' });
-  }
+app.post('/api/direct-payment/order', paymentActionLimiter, async (req, res) => {
   try {
+    const { chainId, assetId, sender, recipient, amount } = req.body || {};
+    const numericChainId = Number(chainId);
+    const config = EVM_CHAIN_CONFIG[numericChainId];
+    if (!config || typeof assetId !== 'string' || typeof amount !== 'string' ||
+        !/^\d+$/.test(amount) || BigInt(amount) <= 0n ||
+        !isAddress(sender || '') || !isAddress(recipient || '')) {
+      return res.status(400).json({ error: 'A supported EVM network, token, wallet, merchant address, and positive token amount are required.' });
+    }
     const tokens = await getTokens();
     const token = getToken(tokens, assetId);
     if (!token || !config.keys.includes(String(token.blockchain || '').toLowerCase()) ||
         !isAddress(token.contractAddress || '') || token.contractAddress.toLowerCase() === '0x0000000000000000000000000000000000000000') {
-      return res.status(400).json({ verified: false, error: 'The token is not a supported ERC-20 asset on the selected network.' });
+      return res.status(400).json({ error: 'The selected token is not a supported ERC-20 asset on this network.' });
     }
-    const provider = new JsonRpcProvider(config.rpc, Number(chainId), { staticNetwork: true });
+    const orderId = randomBytes(24).toString('hex');
+    const now = Date.now();
+    const order = {
+      orderId, chainId: numericChainId, assetId,
+      sender: sender.toLowerCase(), recipient: recipient.toLowerCase(),
+      amount, createdAt: now, expiresAt: now + 10 * 60 * 1000
+    };
+    const stored = await putUniquePrivateRecord('direct-payment-orders/' + orderId + '.json', order);
+    if (!stored) return res.status(503).json({ error: 'Could not reserve a unique payment order. Please retry.' });
+    res.set('Cache-Control', 'no-store');
+    res.json({ orderId, expiresAt: order.expiresAt });
+  } catch (error) {
+    res.status(error.status || 502).json({ error: error.message || 'Could not create a direct-payment order.' });
+  }
+});
+
+app.post('/api/direct-payment/verify', paymentActionLimiter, async (req, res) => {
+  const { txHash, orderId } = req.body || {};
+  if (typeof txHash !== 'string' || !/^0x[a-fA-F0-9]{64}$/.test(txHash) ||
+      typeof orderId !== 'string' || !/^[a-f0-9]{48}$/.test(orderId)) {
+    return res.status(400).json({ verified: false, error: 'A valid transaction hash and payment order ID are required.' });
+  }
+  try {
+    const order = await readPrivateRecord('direct-payment-orders/' + orderId + '.json');
+    if (!order || order.orderId !== orderId) {
+      return res.status(404).json({ verified: false, error: 'Payment order not found. Create a fresh checkout order.' });
+    }
+    if (!Number.isFinite(order.expiresAt) || order.expiresAt < Date.now()) {
+      return res.status(410).json({ verified: false, error: 'This payment order expired. Create a fresh checkout order.' });
+    }
+    const config = EVM_CHAIN_CONFIG[Number(order.chainId)];
+    if (!config) return res.status(400).json({ verified: false, error: 'The payment order network is not supported.' });
+    const tokens = await getTokens();
+    const token = getToken(tokens, order.assetId);
+    if (!token || !config.keys.includes(String(token.blockchain || '').toLowerCase()) ||
+        !isAddress(token.contractAddress || '') || token.contractAddress.toLowerCase() === '0x0000000000000000000000000000000000000000') {
+      return res.status(400).json({ verified: false, error: 'The payment order token is no longer supported.' });
+    }
+    const provider = new JsonRpcProvider(config.rpc, Number(order.chainId), { staticNetwork: true });
     const [network, tx, receipt, latestBlock] = await Promise.all([
       provider.getNetwork(), provider.getTransaction(txHash), provider.getTransactionReceipt(txHash), provider.getBlockNumber()
     ]);
-    if (Number(network.chainId) !== Number(chainId)) throw new Error('RPC network does not match the requested chain.');
+    if (Number(network.chainId) !== Number(order.chainId)) throw new Error('RPC network does not match the payment order network.');
     if (!tx || !receipt) return res.status(202).json({ verified: false, pending: true, error: 'Transaction is not yet visible on the selected network.' });
     if (receipt.status !== 1) return res.status(400).json({ verified: false, error: 'The transaction reverted on-chain.' });
-    if (tx.from.toLowerCase() !== sender.toLowerCase() ||
+    if (tx.from.toLowerCase() !== order.sender ||
         !tx.to || tx.to.toLowerCase() !== token.contractAddress.toLowerCase()) {
-      return res.status(400).json({ verified: false, error: 'Transaction sender or token contract does not match this checkout.' });
+      return res.status(400).json({ verified: false, error: 'Transaction sender or token contract does not match this payment order.' });
     }
     const confirmations = latestBlock - receipt.blockNumber + 1;
     if (confirmations < 2) return res.status(202).json({ verified: false, pending: true, confirmations, error: 'Waiting for a second block confirmation.' });
@@ -640,14 +722,25 @@ app.post('/api/direct-payment/verify', paymentActionLimiter, async (req, res) =>
       if (log.address.toLowerCase() !== token.contractAddress.toLowerCase()) return false;
       try {
         const parsed = transferLogInterface.parseLog(log);
-        return parsed && parsed.args.from.toLowerCase() === sender.toLowerCase() &&
-          parsed.args.to.toLowerCase() === recipient.toLowerCase() &&
-          parsed.args.value === BigInt(amount);
+        return parsed && parsed.args.from.toLowerCase() === order.sender &&
+          parsed.args.to.toLowerCase() === order.recipient &&
+          parsed.args.value === BigInt(order.amount);
       } catch { return false; }
     });
-    if (!matchingTransfer) return res.status(400).json({ verified: false, error: 'No exact ERC-20 transfer to the merchant was found in this transaction.' });
+    if (!matchingTransfer) return res.status(400).json({ verified: false, error: 'No exact ERC-20 transfer for this payment order was found.' });
+    const normalizedHash = txHash.toLowerCase();
+    const hashClaimed = await putUniquePrivateRecord(
+      'direct-payment-used-hashes/' + order.chainId + '-' + normalizedHash + '.json',
+      { orderId, txHash: normalizedHash, usedAt: Date.now() }
+    );
+    if (!hashClaimed) return res.status(409).json({ verified: false, error: 'This transaction hash has already been used for a checkout.' });
+    const orderClaimed = await putUniquePrivateRecord(
+      'direct-payment-used-orders/' + orderId + '.json',
+      { orderId, txHash: normalizedHash, usedAt: Date.now() }
+    );
+    if (!orderClaimed) return res.status(409).json({ verified: false, error: 'This payment order has already been completed or used.' });
     res.set('Cache-Control', 'no-store');
-    res.json({ verified: true, status: 'SUCCESS', txHash, chainId: Number(chainId), confirmations, token: token.symbol, recipient });
+    res.json({ verified: true, status: 'SUCCESS', txHash, chainId: Number(order.chainId), confirmations, token: token.symbol, recipient: order.recipient });
   } catch (error) {
     res.status(error.status || 502).json({ verified: false, error: error.message || 'Could not verify the EVM transaction.' });
   }
