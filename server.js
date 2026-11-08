@@ -19,7 +19,7 @@ app.use(cors({
   origin(origin, callback) {
     if (!origin) return callback(null, false);
     if (allowedOrigins.has(origin)) return callback(null, true);
-    if (!isProduction && /^https?:\\/\\/(localhost|127\\.0\\.0\\.1)(:\\d+)?$/.test(origin)) return callback(null, true);
+    if (!isProduction && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return callback(null, true);
     return callback(null, false);
   }
 }));
@@ -90,7 +90,7 @@ const EVM_BLOCKCHAINS = new Set([
   'eth', 'ethereum', 'base', 'arb', 'arbitrum', 'op', 'optimism',
   'polygon', 'bsc', 'bnb', 'avax', 'avalanche', 'gnosis', 'scroll',
   'aurora', 'bera', 'berachain', 'fantom', 'ftm', 'linea', 'zksync',
-  'mantle', 'mode', 'blast', ' celo', 'celo', 'worldchain'
+  'mantle', 'mode', 'blast', 'celo', 'worldchain'
 ]);
 function isValidDestinationRecipient(recipient, blockchain) {
   const chain = String(blockchain || '').trim().toLowerCase();
