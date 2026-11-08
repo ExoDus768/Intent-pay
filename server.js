@@ -376,6 +376,71 @@ const RELAY_CHAIN_IDS = {
   aurora: 1313161554, bera: 80094, berachain: 80094
 };
 
+app.post('/api/lifi/quote', async (req, res) => {
+  try {
+    const { originAsset, destinationAsset, amount, user, recipient } = req.body || {};
+    if (!originAsset || !destinationAsset || !/^\\d+$/.test(String(amount || '')) ||
+        !isAddress(user || '') || !isAddress(recipient || '')) {
+      return res.status(400).json({ error: 'Valid EVM assets, wallet addresses, and token amount are required.' });
+    }
+    const tokens = await getTokens();
+    const origin = getToken(tokens, originAsset);
+    const destination = getToken(tokens, destinationAsset);
+    if (!origin || !destination) return res.status(400).json({ error: 'Selected token is not in the live token registry.' });
+    const originChainId = RELAY_CHAIN_IDS[String(origin.blockchain || '').toLowerCase()];
+    const destinationChainId = RELAY_CHAIN_IDS[String(destination.blockchain || '').toLowerCase()];
+    if (!originChainId || !destinationChainId || !EVM_CHAIN_CONFIG[originChainId] || !EVM_CHAIN_CONFIG[destinationChainId]) {
+      return res.status(400).json({ error: 'LI.FI fallback is limited to supported EVM-to-EVM routes. NEAR routes stay on NEAR Intents.' });
+    }
+    const fromToken = origin.contractAddress || '0x0000000000000000000000000000000000000000';
+    const toToken = destination.contractAddress || '0x0000000000000000000000000000000000000000';
+    if ((origin.contractAddress && !isAddress(origin.contractAddress)) ||
+        (destination.contractAddress && !isAddress(destination.contractAddress))) {
+      return res.status(400).json({ error: 'Token registry returned an invalid EVM token contract.' });
+    }
+    const params = new URLSearchParams({
+      fromChain: String(originChainId), toChain: String(destinationChainId),
+      fromToken, toToken, fromAmount: String(amount), fromAddress: user,
+      toAddress: recipient, slippage: '0.01', order: 'RECOMMENDED', integrator: 'xoduspay'
+    });
+    const headers = { Accept: 'application/json' };
+    if (process.env.LIFI_API_KEY) headers['x-lifi-api-key'] = process.env.LIFI_API_KEY;
+    const response = await fetch('https://li.quest/v1/quote?' + params.toString(), { headers });
+    const raw = await response.text();
+    let data = {};
+    try { data = raw ? JSON.parse(raw) : {}; } catch { data = { message: raw }; }
+    if (!response.ok) {
+      const error = new Error(data.message || data.error || 'LI.FI could not find an executable route for this amount.');
+      error.status = response.status;
+      throw error;
+    }
+    const estimate = data.estimate || {};
+    const tx = data.transactionRequest;
+    if (!tx?.to || !tx?.data || estimate.toAmount == null || !estimate.approvalAddress && origin.contractAddress) {
+      return res.status(502).json({ error: 'LI.FI returned an incomplete transaction quote. No payment should be sent.' });
+    }
+    const inputUsd = Number(estimate.fromAmountUSD);
+    if (!Number.isFinite(inputUsd) || inputUsd < 0.01) {
+      return res.status(400).json({ error: 'LI.FI could not verify the $0.01 minimum for this payment.' });
+    }
+    res.json({
+      provider: 'lifi', transactionRequest: tx, approvalAddress: estimate.approvalAddress || null,
+      quote: {
+        amountIn: String(estimate.fromAmount ?? amount),
+        amountOut: String(estimate.toAmount),
+        amountInFormatted: estimate.fromAmount,
+        amountOutFormatted: estimate.toAmount,
+        amountInUsd: String(inputUsd),
+        deadline: new Date(Date.now() + 2 * 60 * 1000).toISOString(),
+        timeEstimate: estimate.executionDuration
+      },
+      lifi: { tool: data.toolDetails?.name || data.tool, route: data.includedSteps || [] }
+    });
+  } catch (error) {
+    res.status(error.status || 502).json({ error: error.message || 'LI.FI could not quote this EVM route.' });
+  }
+});
+
 app.post('/api/relay/quote', async (req, res) => {
   try {
     const { originAsset, destinationAsset, amount, user, recipient, tradeType = 'EXACT_INPUT' } = req.body || {};
