@@ -44,9 +44,25 @@ export default function MerchantTools({ open = false, onClose = () => {}, tokens
     .filter(t => t?.assetId && destinationChain && chainOf(t) === destinationChain)
     .sort((a, b) => String(a.symbol || '').localeCompare(String(b.symbol || ''))), [tokens, destinationChain]);
   const selected = tokens.find(t => String(t.assetId) === String(destinationAsset) && chainOf(t) === destinationChain);
-  const isNearPayout = selected?.blockchain?.toLowerCase() === 'near';
+  const payoutChain = chainOf(selected || {});
+  const isNearPayout = payoutChain === 'near';
+  const isSolanaPayout = payoutChain === 'solana';
+  const isEvmPayout = validatedPayoutChains.has(payoutChain) && !isNearPayout && !isSolanaPayout;
   const nearAccountFormatValid = /^[a-z0-9]+([._-][a-z0-9]+)*$/.test(recipient.trim()) && recipient.trim().length >= 2 && recipient.trim().length <= 64;
-  const addressValid = isNearPayout ? nearAccountFormatValid && nearAccountStatus === 'registered' : /^0x[a-fA-F0-9]{40}$/.test(recipient.trim());
+  const isValidSolanaAddress = value => {
+    const input = String(value || '');
+    if (!/^[1-9A-HJ-NP-Za-km-z]+$/.test(input) || input.length < 32 || input.length > 44) return false;
+    let number = 0n;
+    for (const char of input) number = number * 58n + BigInt('123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'.indexOf(char));
+    let bytes = 0;
+    while (number > 0n) { bytes++; number >>= 8n; }
+    for (const char of input) { if (char !== '1') break; bytes++; }
+    return bytes === 32;
+  };
+  const addressValid = isNearPayout
+    ? nearAccountFormatValid && nearAccountStatus === 'registered'
+    : isSolanaPayout ? isValidSolanaAddress(recipient.trim())
+    : isEvmPayout ? /^0x[a-fA-F0-9]{40}$/.test(recipient.trim()) : false;
 
   useEffect(() => {
     if (!isNearPayout || !nearAccountFormatValid) {
@@ -167,13 +183,13 @@ export default function MerchantTools({ open = false, onClose = () => {}, tokens
             {payoutTokens.length === 0 && <p className="merchant-error">No payout tokens are currently available for this network in the live NEAR Intents registry. Choose another network.</p>}
           </> : <p className="merchant-hint">Choose a payout network first. Only tokens supported on that network will appear here.</p>}
           <label htmlFor="intentpay-recipient">Your receiving wallet address</label>
-          <input id="intentpay-recipient" value={recipient} onChange={e => setRecipient(isNearPayout ? e.target.value.toLowerCase().trim() : e.target.value.trim())} placeholder={isNearPayout ? 'merchant.near' : '0x…'} autoCapitalize="none" autoCorrect="off" spellCheck={false} />
+          <input id="intentpay-recipient" value={recipient} onChange={e => setRecipient(isNearPayout ? e.target.value.toLowerCase().trim() : e.target.value.trim())} placeholder={isNearPayout ? 'merchant.near' : isSolanaPayout ? 'Solana wallet address' : isEvmPayout ? '0x…' : 'Unsupported payout network'} autoCapitalize="none" autoCorrect="off" spellCheck={false} />
           {recipient && selected && isNearPayout && nearAccountStatus === 'checking' && <p className="merchant-hint">Checking NEAR mainnet for this account…</p>}
           {recipient && selected && isNearPayout && nearAccountStatus === 'registered' && <p className="merchant-notice" role="status">✓ Registered NEAR account detected and verified on mainnet.</p>}
           {recipient && selected && isNearPayout && nearAccountStatus === 'unregistered' && <p className="merchant-error" role="alert">This NEAR account was not found on mainnet. Check the account ID.</p>}
           {recipient && selected && isNearPayout && nearAccountStatus === 'unavailable' && <p className="merchant-error" role="alert">Could not verify this account with NEAR mainnet. Try again shortly.</p>}
           {recipient && selected && isNearPayout && nearAccountStatus === 'idle' && !nearAccountFormatValid && <p className="merchant-error">Enter a valid lowercase NEAR account ID (2–64 characters).</p>}
-          {recipient && selected && !isNearPayout && !addressValid && <p className="merchant-error">Enter a valid EVM wallet address for this payout network.</p>}
+          {recipient && selected && isSolanaPayout && !addressValid && <p className="merchant-error">Enter a valid Solana mainnet address.</p>}{recipient && selected && isEvmPayout && !addressValid && <p className="merchant-error">Enter a valid EVM wallet address for this payout network.</p>}
 
           <label htmlFor="intentpay-button-label">Button text</label>
           <input id="intentpay-button-label" value={buttonLabel} onChange={e => setButtonLabel(e.target.value)} maxLength={32} placeholder="Pay with crypto" />
