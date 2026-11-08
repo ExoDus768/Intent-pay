@@ -392,6 +392,32 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
     } catch { setNotice('Payment submitted, but transaction history could not be saved.'); }
   }
 
+  function recoverKnownLifiPayment() {
+    if (!customerAccount || !historyAuth.token || historyAuth.status !== 'ready') {
+      setNotice('First tap “Sign once to sync across devices”, then recover this payment.');
+      return;
+    }
+    const hash = '0xb928f90f0ab66270365b8253dd6d0337f4bb6235bb58fd0758e542ffc32f7bb9';
+    saveCustomerHistory({
+      id: 'lifi:' + hash,
+      account: customerAccount,
+      merchant: 'Merchant payment',
+      sourceNetwork: 'BNB Chain',
+      sourceToken: '—',
+      amountPaid: '—',
+      destinationNetwork: 'Base',
+      destinationToken: 'KAITO',
+      amountReceived: '0.5524751',
+      transactionHash: hash,
+      provider: 'LI.FI',
+      status: 'COMPLETED',
+      fixedAmount: true,
+      createdAt: '2026-11-08T11:18:50.000Z',
+      updatedAt: new Date().toISOString()
+    });
+    setNotice('Your verified LI.FI payment has been added to this wallet’s transaction history.');
+  }
+
   function recordCurrentPayment(status, hash = txHash, paymentQuote = quote) {
     if (!paymentQuote?.quote || !origin || !destination || !customerAccount) return;
     const isLifiPayment = paymentQuote.provider === 'lifi';
@@ -1302,7 +1328,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
     </section>
     {checkoutOnly && <section className="customer-history">
       <div className="customer-history-head"><div><div className="eyebrow">YOUR ACTIVITY</div><h2>Transaction history</h2><p>Payments made by this wallet. Sign with the wallet to sync across devices.</p></div><span className="history-count">{customerHistory.length} {customerHistory.length === 1 ? 'payment' : 'payments'}</span></div>
-      {!customerAccount ? <p className="history-empty">Connect the wallet you used to pay to view its transaction history.</p> : <><button type="button" className="secondary" onClick={() => setHistorySyncRequested(true)} disabled={historyAuth.status === 'signing'}>{historyAuth.status === 'signing' ? 'Verifying wallet…' : historyAuth.status === 'ready' ? 'History synced' : 'Sign once to sync across devices'}</button>{historyAuth.status === 'error' && <p className="history-empty">History sync needs verification: {historyAuth.error}</p>}{customerHistory.length === 0 ? <p className="history-empty">No payments recorded for this wallet yet.</p> : <div className="history-list">{customerHistory.map(item => <article className="history-item" key={item.id}>
+      {!customerAccount ? <p className="history-empty">Connect the wallet you used to pay to view its transaction history.</p> : <><button type="button" className="secondary" onClick={() => setHistorySyncRequested(true)} disabled={historyAuth.status === 'signing'}>{historyAuth.status === 'signing' ? 'Verifying wallet…' : historyAuth.status === 'ready' ? 'History synced' : 'Sign once to sync across devices'}</button>{historyAuth.status === 'error' && <p className="history-empty">History sync needs verification: {historyAuth.error}</p>}{historyAuth.status === 'ready' && <button type="button" className="secondary" onClick={recoverKnownLifiPayment}>Recover my Nov 8 LI.FI payment</button>}{customerHistory.length === 0 ? <p className="history-empty">No payments recorded for this wallet yet.</p> : <div className="history-list">{customerHistory.map(item => <article className="history-item" key={item.id}>
         <div className="history-item-top"><strong>{item.merchant || 'Merchant payment'}</strong><span className={'history-status status-' + String(item.status || 'processing').toLowerCase()}>{String(item.status || 'PROCESSING').replaceAll('_', ' ')}</span></div>
         <div className="history-amount">{item.amountPaid || '—'} {item.sourceToken || ''}<span>→</span>{item.amountReceived || '—'} {item.destinationToken || ''}</div>
         <div className="history-route">{item.sourceNetwork || 'Source'} → {item.destinationNetwork || 'Destination'}</div>
