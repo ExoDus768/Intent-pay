@@ -66,7 +66,7 @@ async function oneClick(path, options = {}, authenticated = true) {
       data.message || data.error?.message || data.error || firstError?.message ||
       firstError?.detail || 'No provider message'
     ).slice(0, 500);
-    const minimumMatch = providerMessage.match(/minimum(?:\s+swap)?\s+amount(?:\s+is|\s*:)?\s*\$?([\d,.]+)/i);
+    const minimumMatch = providerMessage.match(/minimum(?:\s+swap)?\s+amount(?:\s+(?:is|of)|\s*:)?\s*\$?([\d,.]+)/i);
     const userMessage = minimumMatch
       ? `NEAR Intents currently reports a route minimum of ${minimumMatch[1]}. No deposit address was created. Try another API-supported route or amount if you choose.`
       : `NEAR Intents rejected this quote (HTTP ${response.status}). No deposit address was created. ${providerMessage}`;
