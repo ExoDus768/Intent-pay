@@ -17,7 +17,7 @@ export default function MerchantTools({ open = false, onClose = () => {}, tokens
   const [nearAccountStatus, setNearAccountStatus] = useState('idle');
 
   const chainOf = t => String(t?.blockchain || '').trim().toLowerCase();
-  const chains = useMemo(() => [...new Set(tokens.filter(t => t?.assetId && chainOf(t)).map(chainOf))].sort(), [tokens]);
+  const chains = useMemo(() => [...new Set([...tokens.filter(t => t?.assetId && chainOf(t)).map(chainOf), 'near'])].sort(), [tokens]);
   const payoutTokens = useMemo(() => tokens
     .filter(t => t?.assetId && destinationChain && chainOf(t) === destinationChain)
     .sort((a, b) => String(a.symbol || '').localeCompare(String(b.symbol || ''))), [tokens, destinationChain]);
