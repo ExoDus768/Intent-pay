@@ -23,18 +23,33 @@ const ERC20_ABI = ['function transfer(address to, uint256 amount) returns (bool)
 const ERC20_TRANSFER_INTERFACE = new Interface(['function transfer(address to, uint256 amount)']);
 const NATIVE_SYMBOL = {1:'ETH',8453:'ETH',42161:'ETH',10:'ETH',137:'POL',56:'BNB',43114:'AVAX',100:'xDAI',80094:'BERA',534352:'ETH',1313161554:'ETH'};
 const TERMINAL = new Set(['SUCCESS', 'FAILED', 'REFUNDED', 'INCOMPLETE_DEPOSIT']);
-const tokenChain = t => String(t.blockchain || '').toLowerCase();
+const tokenChain = t => normalizeBlockchain(t?.blockchain, t?.assetId);
 const isNearToken = t => tokenChain(t) === 'near';
 const tokenId = t => t.assetId || '';
 const tokenName = t => `${t.symbol || 'TOKEN'} · ${t.blockchain || 'Unknown chain'}`;
 const chainLabel = value => ({eth:'Ethereum',arb:'Arbitrum',op:'Optimism',avax:'Avalanche',bera:'Berachain'}[value] || String(value || '').split(/[-_ ]+/).map(x => x.charAt(0).toUpperCase() + x.slice(1)).join(' '));
+const normalizeBlockchain = (value, assetId = '') => {
+  const raw = String(value || '').trim().toLowerCase().replace(/[_ ]+/g, '-');
+  const aliases = {
+    'ethereum':'eth','ethereum-mainnet':'eth','arbitrum-one':'arbitrum','arb':'arbitrum',
+    'binance-smart-chain':'bsc','bnb':'bsc','bnb-chain':'bsc','binance':'bsc',
+    'avalanche-c-chain':'avalanche','avax':'avalanche','op':'optimism',
+    'matic':'polygon','pol':'polygon','ftm':'fantom','bera':'berachain',
+    'sol':'solana','xdai':'gnosis'
+  };
+  if (raw) return aliases[raw] || raw;
+  const id = String(assetId || '');
+  const nep = id.match(/^nep141:([a-z0-9]+)-/i)?.[1]?.toLowerCase();
+  if (nep) return aliases[nep] || nep;
+  const oneCs = id.match(/^1cs_v1:([^:]+):/i)?.[1]?.toLowerCase();
+  if (oneCs) return aliases[oneCs] || oneCs;
+  return 'near';
+};
 const TOKEN_PRIORITY = ['USDC','USDT','ETH','NEAR','DAI','WETH','WBTC','USDBC','USDE','FRAX','USDS'];
 const tokenPriority = t => { const i = TOKEN_PRIORITY.indexOf(String(t.symbol || '').toUpperCase()); return i < 0 ? TOKEN_PRIORITY.length : i; };
 const normalizeToken = token => {
   if (!token || typeof token !== 'object' || !token.assetId) return null;
-  const explicitChain = String(token.blockchain || '').trim().toLowerCase();
-  const assetPrefix = String(token.assetId).match(/^nep141:([a-z0-9]+)-/i)?.[1]?.toLowerCase();
-  const blockchain = explicitChain || (assetPrefix ? ({bnb:'bsc',arb:'arbitrum',eth:'eth',sol:'solana'}[assetPrefix] || assetPrefix) : 'near');
+  const blockchain = normalizeBlockchain(token.blockchain, token.assetId);
   const decimals = Number(token.decimals);
   if (!Number.isInteger(decimals) || decimals < 0 || decimals > 255) return null;
   return { ...token, blockchain, decimals };
