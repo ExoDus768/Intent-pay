@@ -368,6 +368,67 @@ const EVM_CHAIN_CONFIG = {
   1313161554: { keys: ['aurora'], rpc: 'https://mainnet.aurora.dev' },
   80094: { keys: ['bera', 'berachain'], rpc: 'https://rpc.berachain.com' }
 };
+
+const RELAY_CHAIN_IDS = {
+  eth: 1, ethereum: 1, base: 8453, arb: 42161, arbitrum: 42161,
+  op: 10, optimism: 10, polygon: 137, bsc: 56, bnb: 56,
+  avax: 43114, avalanche: 43114, gnosis: 100, scroll: 534352,
+  aurora: 1313161554, bera: 80094, berachain: 80094
+};
+
+app.post('/api/relay/quote', async (req, res) => {
+  try {
+    const { originAsset, destinationAsset, amount, user, recipient, tradeType = 'EXACT_INPUT' } = req.body || {};
+    if (!process.env.RELAY_API_KEY) {
+      return res.status(503).json({ error: 'Relay fallback is not configured yet. Add RELAY_API_KEY to the server environment.' });
+    }
+    if (!originAsset || !destinationAsset || !/^\\d+$/.test(String(amount || '')) ||
+        !isAddress(user || '') || !isAddress(recipient || '') ||
+        !['EXACT_INPUT', 'EXACT_OUTPUT'].includes(tradeType)) {
+      return res.status(400).json({ error: 'Valid EVM assets, wallet addresses, amount, and trade type are required.' });
+    }
+    const tokens = await getTokens();
+    const origin = getToken(tokens, originAsset);
+    const destination = getToken(tokens, destinationAsset);
+    if (!origin || !destination) return res.status(400).json({ error: 'Selected token is not in the live token registry.' });
+    const originChainId = RELAY_CHAIN_IDS[String(origin.blockchain || '').toLowerCase()];
+    const destinationChainId = RELAY_CHAIN_IDS[String(destination.blockchain || '').toLowerCase()];
+    if (!originChainId || !destinationChainId || !EVM_CHAIN_CONFIG[originChainId] || !EVM_CHAIN_CONFIG[destinationChainId]) {
+      return res.status(400).json({ error: 'Relay fallback currently supports EVM networks only. NEAR payments continue through NEAR Intents.' });
+    }
+    const originCurrency = origin.contractAddress || '0x0000000000000000000000000000000000000000';
+    const destinationCurrency = destination.contractAddress || '0x0000000000000000000000000000000000000000';
+    if ((origin.contractAddress && !isAddress(origin.contractAddress)) ||
+        (destination.contractAddress && !isAddress(destination.contractAddress))) {
+      return res.status(400).json({ error: 'Token registry returned an invalid EVM token contract.' });
+    }
+    const relayResponse = await fetch('https://api.relay.link/quote/v2', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.RELAY_API_KEY },
+      body: JSON.stringify({
+        user, recipient, originChainId, destinationChainId,
+        originCurrency, destinationCurrency, amount: String(amount),
+        tradeType, slippageTolerance: '100', referrer: 'xoduspay'
+      })
+    });
+    const raw = await relayResponse.text();
+    let data = {};
+    try { data = raw ? JSON.parse(raw) : {}; } catch { data = { message: raw }; }
+    if (!relayResponse.ok) {
+      const error = new Error(data.message || data.errorCode || 'Relay could not find a route for this payment.');
+      error.status = relayResponse.status;
+      error.code = data.errorCode;
+      throw error;
+    }
+    if (!data.requestId || !Array.isArray(data.steps) || !data.steps.length) {
+      return res.status(502).json({ error: 'Relay returned an incomplete quote. No payment should be sent.' });
+    }
+    res.json({ provider: 'relay', ...data, xoduspay: { origin, destination } });
+  } catch (error) {
+    res.status(error.status || 502).json({ error: error.message, code: error.code || undefined });
+  }
+});
+
 const transferLogInterface = new Interface(['event Transfer(address indexed from, address indexed to, uint256 value)']);
 
 app.post('/api/direct-payment/verify', async (req, res) => {
