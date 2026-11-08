@@ -250,6 +250,27 @@ async function writeWalletHistory(wallet, entries) {
     cacheControlMaxAge: 60
   });
 }
+
+function merchantKey(assetId, recipient) {
+  return createHash('sha256').update(String(assetId) + ':' + String(recipient).trim().toLowerCase()).digest('hex');
+}
+async function readMerchantReceipts(key) {
+  try {
+    const blob = await getBlob('merchant-receipts/' + key + '.json', { access: 'private' });
+    if (!blob || blob.statusCode !== 200) return [];
+    return JSON.parse(await new Response(blob.stream).text() || '[]');
+  } catch { return []; }
+}
+async function writeMerchantReceipt(key, receipt) {
+  const current = await readMerchantReceipts(key);
+  const byId = new Map(current.map(item => [item.id, item]));
+  byId.set(receipt.id, { ...(byId.get(receipt.id) || {}), ...receipt });
+  const entries = [...byId.values()].sort((a, b) => Date.parse(b.completedAt || b.createdAt) - Date.parse(a.completedAt || a.createdAt)).slice(0, 100);
+  await putBlob('merchant-receipts/' + key + '.json', JSON.stringify(entries), {
+    access: 'private', contentType: 'application/json', allowOverwrite: true, cacheControlMaxAge: 0
+  });
+  return entries;
+}
 app.post('/api/history/challenge', (req, res) => {
   try {
     const wallet = String(req.body?.wallet || '').trim();
@@ -307,6 +328,21 @@ app.put('/api/history', async (req, res) => {
   } catch (error) { res.status(error.status || 500).json({ error: error.message }); }
 });
 
+
+app.get('/api/merchant/receipts', async (req, res) => {
+  const assetId = String(req.query.assetId || '');
+  const recipient = String(req.query.recipient || '').trim();
+  if (!assetId || assetId.length > 256 || !recipient || recipient.length > 128) {
+    return res.status(400).json({ error: 'Merchant payout asset and receiving address are required.' });
+  }
+  try {
+    const key = merchantKey(assetId, recipient);
+    const receipts = await readMerchantReceipts(key);
+    res.set('Cache-Control', 'no-store');
+    res.json({ receipts });
+  } catch (error) { res.status(500).json({ error: 'Could not load merchant receipts.' }); }
+});
+
 app.get('/api/health', (_req, res) => res.json({ ok: true, service: 'xoduspay-api' }));
 
 app.get('/api/config', (_req, res) => res.json({
@@ -348,6 +384,19 @@ app.post('/api/quote', async (req, res) => {
     }
     if (req.body?.dry !== true && (!data?.quote?.depositAddress || !data?.quote?.amountIn)) {
       return res.status(502).json({ error: '1Click returned an incomplete committed quote. No payment should be sent.' });
+    }
+    if (data?.quote?.depositAddress && req.body?.dry !== true) {
+      const mapping = {
+        assetId: input.destination.assetId,
+        recipient: input.recipient,
+        merchantName: String(req.body?.merchantName || 'Merchant payment').slice(0, 80),
+        sourceAsset: input.origin.assetId,
+        destinationAsset: input.destination.assetId,
+        amountOut: String(data.quote.amountOutFormatted || data.quote.amountOut || ''),
+        createdAt: new Date().toISOString()
+      };
+      await putBlob('merchant-payment-map/' + createHash('sha256').update(String(data.quote.depositAddress)).digest('hex') + '.json',
+        JSON.stringify(mapping), { access: 'private', contentType: 'application/json', allowOverwrite: true });
     }
     res.json({ ...data, intentpay: { origin: input.origin, destination: input.destination } });
   } catch (error) {
@@ -536,6 +585,29 @@ app.get('/api/status', async (req, res) => {
     const query = new URLSearchParams({ depositAddress });
     if (typeof depositMemo === 'string' && depositMemo) query.set('depositMemo', depositMemo);
     const data = await oneClick(`/status?${query.toString()}`, { method: 'GET' });
+    if (data.status === 'SUCCESS') {
+      const mapPath = 'merchant-payment-map/' + createHash('sha256').update(String(depositAddress)).digest('hex') + '.json';
+      try {
+        const mapBlob = await getBlob(mapPath, { access: 'private' });
+        if (mapBlob?.statusCode === 200) {
+          const mapping = JSON.parse(await new Response(mapBlob.stream).text() || '{}');
+          const receipt = {
+            id: createHash('sha256').update(String(depositAddress)).digest('hex'),
+            merchant: mapping.merchantName || 'Merchant payment',
+            status: 'COMPLETED',
+            provider: 'NEAR Intents · 1Click',
+            payoutAsset: mapping.destinationAsset,
+            payoutAmount: mapping.amountOut,
+            recipient: mapping.recipient,
+            destinationTxHash: data.destinationTxHash || data.destinationTransactionHash || data.txHash || data.transactionHash || '',
+            providerStatus: data.status,
+            createdAt: mapping.createdAt,
+            completedAt: new Date().toISOString()
+          };
+          await writeMerchantReceipt(merchantKey(mapping.assetId, mapping.recipient), receipt);
+        }
+      } catch (receiptError) { console.error('Merchant receipt persistence failed:', receiptError.message); }
+    }
     res.json({ ...data, terminal: TERMINAL.has(data.status) });
   } catch (error) { res.status(error.status || 502).json({ error: error.message }); }
 });
