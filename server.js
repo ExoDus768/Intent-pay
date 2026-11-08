@@ -89,7 +89,7 @@ const normalizeBlockchain = (value, assetId = '') => {
   if (nep) return aliases[nep] || nep;
   const oneCs = id.match(/^1cs_v1:([^:]+):/i)?.[1]?.toLowerCase();
   if (oneCs) return aliases[oneCs] || oneCs;
-  return 'near';
+  return null;
 }
 
 async function getTokens() {
@@ -105,7 +105,7 @@ async function getTokens() {
     .map(token => {
       const blockchain = normalizeBlockchain(token.blockchain, token.assetId);
       return { ...token, blockchain, decimals: Number(token.decimals) };
-    });
+    }).filter(token => token.blockchain);
   if (!list.length) throw new Error('The live NEAR Intents token registry returned no usable assets.');
   tokenCache = { value: list, expiresAt: Date.now() + 5 * 60 * 1000 };
   return list;
