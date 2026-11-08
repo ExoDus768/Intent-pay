@@ -378,7 +378,7 @@ const RELAY_CHAIN_IDS = {
 
 app.post('/api/lifi/quote', async (req, res) => {
   try {
-    const { originAsset, destinationAsset, amount, user, recipient } = req.body || {};
+    const { originAsset, destinationAsset, amount, user, recipient, fixedOutput = false } = req.body || {};
     if (!originAsset || !destinationAsset || !/^\\d+$/.test(String(amount || '')) ||
         !isAddress(user || '') || !isAddress(recipient || '')) {
       return res.status(400).json({ error: 'Valid EVM assets, wallet addresses, and token amount are required.' });
@@ -400,12 +400,12 @@ app.post('/api/lifi/quote', async (req, res) => {
     }
     const params = new URLSearchParams({
       fromChain: String(originChainId), toChain: String(destinationChainId),
-      fromToken, toToken, fromAmount: String(amount), fromAddress: user,
+      fromToken, toToken, [fixedOutput ? 'toAmount' : 'fromAmount']: String(amount), fromAddress: user,
       toAddress: recipient, slippage: '0.01', order: 'RECOMMENDED', integrator: 'xoduspay'
     });
     const headers = { Accept: 'application/json' };
     if (process.env.LIFI_API_KEY) headers['x-lifi-api-key'] = process.env.LIFI_API_KEY;
-    const response = await fetch('https://li.quest/v1/quote?' + params.toString(), { headers });
+    const response = await fetch('https://li.quest/v1/quote' + (fixedOutput ? '/toAmount' : '') + '?' + params.toString(), { headers });
     const raw = await response.text();
     let data = {};
     try { data = raw ? JSON.parse(raw) : {}; } catch { data = { message: raw }; }
