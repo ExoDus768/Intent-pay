@@ -147,31 +147,3 @@ export default function MerchantTools({ open = false, onClose = () => {}, tokens
     </div>
   );
 }
- + (fixedAmount || '—') + ' USD' + (fixedTokenEstimate !== null ? ' · approx. ' + fixedTokenEstimate.toLocaleString(undefined, { maximumFractionDigits: 8 }) + ' ' + selected.symbol : '') : 'Customer chooses the payment amount'} · Preview opens checkout only; it does not pay.</small>
-          </div>
-
-          {ready && <>
-            <label>Website embed code</label>
-            <pre className="widget-code">{embed}</pre>
-            <button type="button" className="primary" onClick={() => copy(embed, 'Embed code')}>Copy embed code</button>
-            <label>Hosted checkout link</label>
-            <div className="widget-direct-link"><code>{config}</code><button type="button" className="secondary" onClick={() => copy(config, 'Checkout link')}>Copy link</button></div>
-            <div className="widget-qr-card">
-              <div>
-                <strong>Scan to pay</strong>
-                <p>Customers can scan this QR code with their phone camera to open this exact checkout.</p>
-              </div>
-              {qrDataUrl ? <img className="widget-qr-image" src={qrDataUrl} alt="QR code for this IntentPay checkout link" /> : <div className="widget-qr-placeholder">{qrError || 'Generating QR code…'}</div>}
-              {qrDataUrl && <a className="widget-qr-download" href={qrDataUrl} download="intentpay-checkout-qr.png">Download QR code</a>}
-            </div>
-          </>}
-          {!ready && <p className="widget-setup-hint">Choose a payout network and token, enter your receiving wallet address, and complete the amount settings to generate your widget.</p>}
-          <p className="merchant-hint">The button opens IntentPay's hosted mainnet checkout. Customers connect their own wallet, review the live NEAR Intents quote and network fee, then approve the payment. Your receiving address and payout asset are included in the public checkout link.</p>
-          {error && <p className="merchant-error">{error}</p>}
-          {notice && <p className="merchant-notice">{notice}</p>}
-        </div>
-        <div className="merchant-modal-foot">Powered by NEAR Intents · Mainnet only</div>
-      </section>
-    </div>
-  );
-}
