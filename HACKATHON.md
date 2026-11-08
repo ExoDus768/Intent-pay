@@ -54,9 +54,21 @@ For a public demo, use a small amount and independently verify every wallet prom
 
 See [README.md](./README.md) and [docs/checkout-widget.md](./docs/checkout-widget.md) for setup and integration notes.
 
+## Small-payment fallback
+
+If a 1Click route cannot quote a small EVM payment, checkout may offer a direct transfer only when the customer and merchant use the exact same ERC-20 token on the exact same EVM network. The backend checks the transaction on-chain (sender, token contract, recipient, exact amount, successful receipt and confirmations) before the UI records success. This fallback does not convert assets or bridge between chains; cross-chain payments remain a NEAR Intents / 1Click flow.
+
+## Test status (mainnet)
+
+- EVM wallet connection: user-tested successfully.
+- Meteor Wallet in-app connection: user-tested successfully.
+- Direct EVM same-token fallback: implemented; live payment verification still pending.
+- NEAR customer → EVM merchant via NEAR Intents: implemented through the 1Click quote/deposit/status path; a successful live mainnet settlement has **not yet been verified**. Do not mark this path as tested until 1Click returns SUCCESS for a real transaction.
+- NEAR wallet connection: tested by the user; full NEAR → EVM merchant settlement remains pending.
+
 ## Current limitations
 
 - Merchant accounts and saved widget configurations are not implemented.
-- NEAR deposits use NEAR mainnet and the MyNearWallet wallet-selector module. This path still requires end-to-end verification with a live 1Click quote.
+- Direct EVM fallback supports ERC-20 tokens only and only for an exact same-token, same-network payout.
 - Other non-EVM wallet deposit flows are not implemented, even if their assets appear in the live registry as payout options.
 - The app is a hackathon prototype, not an audited payment processor. Do not use it for high-value production payments without a full security review.
