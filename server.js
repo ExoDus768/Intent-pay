@@ -74,6 +74,24 @@ async function oneClick(path, options = {}, authenticated = true) {
   return data;
 }
 
+function normalizeBlockchain = (value, assetId = '') => {
+  const raw = String(value || '').trim().toLowerCase().replace(/[_ ]+/g, '-');
+  const aliases = {
+    'ethereum':'eth','ethereum-mainnet':'eth','arbitrum-one':'arbitrum','arb':'arbitrum',
+    'binance-smart-chain':'bsc','bnb':'bsc','bnb-chain':'bsc','binance':'bsc',
+    'avalanche-c-chain':'avalanche','avax':'avalanche','op':'optimism',
+    'matic':'polygon','pol':'polygon','ftm':'fantom','bera':'berachain',
+    'sol':'solana','xdai':'gnosis'
+  };
+  if (raw) return aliases[raw] || raw;
+  const id = String(assetId || '');
+  const nep = id.match(/^nep141:([a-z0-9]+)-/i)?.[1]?.toLowerCase();
+  if (nep) return aliases[nep] || nep;
+  const oneCs = id.match(/^1cs_v1:([^:]+):/i)?.[1]?.toLowerCase();
+  if (oneCs) return aliases[oneCs] || oneCs;
+  return 'near';
+}
+
 async function getTokens() {
   if (tokenCache.value && tokenCache.expiresAt > Date.now()) return tokenCache.value;
   const data = await oneClick('/tokens', { method: 'GET' }, false);
@@ -85,11 +103,7 @@ async function getTokens() {
   list = list.filter(token => token && typeof token.assetId === 'string' &&
     Number.isInteger(Number(token.decimals)) && Number(token.decimals) >= 0 && Number(token.decimals) <= 255)
     .map(token => {
-      const explicitChain = String(token.blockchain || '').trim().toLowerCase();
-      const assetPrefix = token.assetId.match(/^nep141:([a-z0-9]+)-/i)?.[1]?.toLowerCase();
-      const blockchain = explicitChain || (assetPrefix
-        ? ({ bnb: 'bsc', arb: 'arbitrum', eth: 'eth', sol: 'solana' }[assetPrefix] || assetPrefix)
-        : 'near');
+      const blockchain = normalizeBlockchain(token.blockchain, token.assetId);
       return { ...token, blockchain, decimals: Number(token.decimals) };
     });
   if (!list.length) throw new Error('The live NEAR Intents token registry returned no usable assets.');
