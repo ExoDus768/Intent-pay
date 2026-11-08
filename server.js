@@ -77,8 +77,22 @@ async function oneClick(path, options = {}, authenticated = true) {
 async function getTokens() {
   if (tokenCache.value && tokenCache.expiresAt > Date.now()) return tokenCache.value;
   const data = await oneClick('/tokens', { method: 'GET' }, false);
-  const list = Array.isArray(data) ? data : (data.tokens || data.data || []);
+  let list = data;
+  for (let depth = 0; depth < 4 && !Array.isArray(list); depth++) {
+    list = list?.tokens || list?.data || list?.result || list?.assets;
+  }
   if (!Array.isArray(list)) throw new Error('Unexpected token registry response.');
+  list = list.filter(token => token && typeof token.assetId === 'string' &&
+    Number.isInteger(Number(token.decimals)) && Number(token.decimals) >= 0 && Number(token.decimals) <= 255)
+    .map(token => {
+      const explicitChain = String(token.blockchain || '').trim().toLowerCase();
+      const assetPrefix = token.assetId.match(/^nep141:([a-z0-9]+)-/i)?.[1]?.toLowerCase();
+      const blockchain = explicitChain || (assetPrefix
+        ? ({ bnb: 'bsc', arb: 'arbitrum', eth: 'eth', sol: 'solana' }[assetPrefix] || assetPrefix)
+        : 'near');
+      return { ...token, blockchain, decimals: Number(token.decimals) };
+    });
+  if (!list.length) throw new Error('The live NEAR Intents token registry returned no usable assets.');
   tokenCache = { value: list, expiresAt: Date.now() + 5 * 60 * 1000 };
   return list;
 }
