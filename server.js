@@ -73,6 +73,9 @@ async function oneClick(path, options = {}, authenticated = true) {
     const error = new Error(userMessage);
     error.status = 502;
     error.upstreamStatus = response.status;
+    error.retryable = [429, 502, 503, 504].includes(response.status);
+    const retryAfter = Number(response.headers.get('retry-after'));
+    error.retryAfterMs = Number.isFinite(retryAfter) && retryAfter > 0 ? Math.min(retryAfter * 1000, 5000) : 900;
     throw error;
   }
   return data;
@@ -557,8 +560,8 @@ app.post('/api/quote', quoteLimiter, async (req, res) => {
         method: 'POST', body: JSON.stringify({ ...request, dry: true })
       });
     } catch (firstError) {
-      if (![502, 503, 504].includes(firstError.status)) throw firstError;
-      await new Promise(resolve => setTimeout(resolve, 900));
+      if (!firstError.retryable && firstError.status) throw firstError;
+      await new Promise(resolve => setTimeout(resolve, firstError.retryAfterMs || 900));
       dryData = await oneClick('/quote', {
         method: 'POST', body: JSON.stringify({ ...request, dry: true })
       });
