@@ -109,6 +109,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
   const [paymentStatus, setSwapStatus] = useState('');
   const [customerHistory, setCustomerHistory] = useState([]);
   const [historyAuth, setHistoryAuth] = useState({ account: '', token: '', status: 'idle', error: '' });
+  const [historySyncRequested, setHistorySyncRequested] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('Connect your EVM or NEAR mainnet wallet, choose the asset you will pay with, and set the merchant payout details.');
   const quoteRequestRef = useRef(0);
@@ -305,7 +306,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
       if (!cancelled) setHistoryAuth({ account, token: '', status: 'error', error: error?.message || 'Wallet history sync failed.' });
     });
     return () => { cancelled = true; };
-  }, [customerAccount, nearSelector, origin]);
+  }, [customerAccount, nearSelector, origin, historySyncRequested]);
 
   function saveCustomerHistory(entry) {
     const account = entry.account || customerAccount;
