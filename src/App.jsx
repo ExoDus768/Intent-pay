@@ -757,6 +757,30 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
       setNotice('Quote ready. Review the payment amount and estimated network gas before approving.');
     } catch (e) {
       if (requestId === quoteRequestRef.current) {
+        const canTryLifi = origin && destination && !isNearToken(origin) && !isNearToken(destination) &&
+          CHAIN_IDS[tokenChain(origin)] && CHAIN_IDS[tokenChain(destination)] && isAddress(recipient.trim());
+        if (canTryLifi) {
+          try {
+            setNotice('NEAR Intents could not quote this EVM route. Checking LI.FI fallback…');
+            const lifiResponse = await fetch('/api/lifi/quote', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                originAsset: origin.assetId, destinationAsset: destination.assetId,
+                amount: atomicAmount, user: wallet, recipient: recipient.trim()
+              })
+            });
+            const lifiData = await lifiResponse.json();
+            if (!lifiResponse.ok) throw new Error(lifiData.error || 'LI.FI has no executable route for this payment.');
+            lifiData.quote.amountInFormatted = formatUnits(lifiData.quote.amountIn, Number(origin.decimals || 0));
+            lifiData.quote.amountOutFormatted = formatUnits(lifiData.quote.amountOut, Number(destination.decimals || 0));
+            setGasEstimate({ kind: 'unavailable', label: 'Final source and destination network fees are shown by your wallet and route provider' });
+            setQuote(lifiData);
+            setNotice('NEAR Intents could not quote this route. LI.FI has returned an EVM-to-EVM fallback quote.');
+            return;
+          } catch (lifiError) {
+            e = new Error('NEAR Intents: ' + (e.message || 'No route') + ' LI.FI: ' + (lifiError.message || 'No route'));
+          }
+        }
         const sameEvmAsset = Boolean(
           origin && destination &&
           CHAIN_IDS[tokenChain(origin)] &&
@@ -810,6 +834,81 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
 
   async function sendDeposit() {
     if (!quote?.quote || !origin) return;
+    if (quote.provider === 'lifi') {
+      if (!wallet || !destination || isNearToken(origin) || isNearToken(destination)) return setNotice('LI.FI fallback is only available for EVM-to-EVM payments.');
+      const chainId = CHAIN_IDS[tokenChain(origin)];
+      setBusy(true);
+      try {
+        const injected = activeEvmProviderRef.current || window.ethereum;
+        if (!injected) throw new Error('Reconnect your EVM wallet before paying.');
+        let provider = new BrowserProvider(injected);
+        let network = await provider.getNetwork();
+        if (Number(network.chainId) !== chainId) {
+          await provider.send('wallet_switchEthereumChain', [{ chainId: '0x' + chainId.toString(16) }]);
+          provider = new BrowserProvider(injected);
+          network = await provider.getNetwork();
+        }
+        if (Number(network.chainId) !== chainId) throw new Error('Switch to the selected payment network before approving.');
+        const signer = await provider.getSigner();
+        const sender = await signer.getAddress();
+        const amountIn = BigInt(quote.quote.amountIn);
+        if (origin.contractAddress) {
+          if (!quote.approvalAddress || !isAddress(quote.approvalAddress)) throw new Error('LI.FI did not provide a valid token approval address.');
+          const token = new Contract(origin.contractAddress, ERC20_ABI, signer);
+          const allowance = await token.allowance(sender, quote.approvalAddress);
+          if (allowance < amountIn) {
+            setNotice('Approve the selected token for this LI.FI route. Review the spender and amount in your wallet.');
+            const approval = await token.approve(quote.approvalAddress, amountIn);
+            await approval.wait(1);
+          }
+        }
+        if (Date.parse(quote.quote.deadline) <= Date.now()) throw new Error('This LI.FI quote expired. Refresh it before paying.');
+        const request = quote.transactionRequest || {};
+        if (!request.to || !request.data) throw new Error('LI.FI transaction data is incomplete. No payment was sent.');
+        setNotice('Confirm the LI.FI transaction in your wallet. Check the route, token and network carefully.');
+        const tx = await signer.sendTransaction({
+          to: request.to, data: request.data, value: request.value ? BigInt(request.value) : 0n,
+          ...(request.gasLimit ? { gasLimit: BigInt(request.gasLimit) } : {}),
+          ...(request.gasPrice ? { gasPrice: BigInt(request.gasPrice) } : {}),
+          ...(request.maxFeePerGas ? { maxFeePerGas: BigInt(request.maxFeePerGas) } : {}),
+          ...(request.maxPriorityFeePerGas ? { maxPriorityFeePerGas: BigInt(request.maxPriorityFeePerGas) } : {})
+        });
+        setTxHash(tx.hash);
+        recordCurrentPayment('PROCESSING', tx.hash, quote);
+        setNotice('Source transaction submitted. Waiting for LI.FI to confirm delivery to the merchant…');
+        const receipt = await tx.wait(1);
+        if (!receipt || receipt.status !== 1) throw new Error('The source-chain transaction failed.');
+        for (let attempt = 0; attempt < 180; attempt++) {
+          const params = new URLSearchParams({
+            txHash: tx.hash, fromChain: String(quote.lifi.fromChain),
+            toChain: String(quote.lifi.toChain), bridge: String(quote.lifi.bridge || '')
+          });
+          const statusResponse = await fetch('/api/lifi/status?' + params.toString());
+          const statusData = await statusResponse.json();
+          if (!statusResponse.ok) throw new Error(statusData.error || 'Could not confirm LI.FI settlement.');
+          const status = String(statusData.status || statusData.substatus || 'PENDING').toUpperCase();
+          setSwapStatus(status);
+          recordCurrentPayment(status, tx.hash, quote);
+          if (status === 'DONE' || status === 'COMPLETED' || status === 'SUCCESS') {
+            setSwapStatus('SUCCESS');
+            notifyPaymentSuccess();
+            setNotice('LI.FI confirms the cross-chain payment completed. Check the merchant payout wallet.');
+            return;
+          }
+          if (status === 'FAILED' || status === 'REFUNDED' || status === 'NOT_FOUND') {
+            setNotice('LI.FI reports that this route did not complete: ' + status + '. Check the source and refund status before retrying.');
+            return;
+          }
+          setNotice('LI.FI payment is processing. Do not send a second payment while settlement is pending…');
+          await wait(5000);
+        }
+        setNotice('The source transaction is confirmed, but LI.FI settlement is still pending. Refresh status later; do not pay again.');
+      } catch (error) {
+        setSwapStatus(txHash ? 'PENDING_VERIFICATION' : 'FAILED');
+        setNotice(error.message || 'LI.FI payment could not be completed. Check wallet activity before retrying.');
+      } finally { setBusy(false); }
+      return;
+    }
     if (quote.directEvm) {
       if (!wallet || !destination || !recipient.trim()) return setNotice('Connect your EVM wallet and confirm the merchant address.');
       const chainId = CHAIN_IDS[tokenChain(origin)];
@@ -1116,8 +1215,8 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
         {gasEstimate?.kind === 'evm' && <p className="helper-text">{gasEstimate.label}. The final fee can change before confirmation; your wallet shows the amount to approve.</p>}
         {gasEstimate?.kind === 'near' && <p className="helper-text">NEAR network gas is paid separately from your NEAR balance. Review the final fee in your NEAR wallet before approving.</p>}
         {gasEstimate?.kind === 'unavailable' && <p className="helper-text">Could not estimate gas: {gasEstimate.label}. Your wallet will show the required network fee before you sign.</p>}
-        <div className="quote-row"><span>Routing</span><strong>{quote.directEvm ? 'Direct EVM · same token and network' : 'NEAR Intents · 1Click'}</strong></div><div className="quote-row"><span>Merchant address</span><strong>{short(recipient)}</strong></div>
-        <p className="helper-text">{quote.directEvm ? 'This fallback does not convert tokens or move funds cross-chain. The merchant must accept this exact token on this exact network. Payment is marked successful only after server-side on-chain verification.' : 'NEAR Intents calculates the conversion and delivery amount shown in this quote. Network gas is separate and paid to the source blockchain.'}</p>
+        <div className="quote-row"><span>Routing</span><strong>{quote.provider === 'lifi' ? 'LI.FI · EVM fallback' : quote.directEvm ? 'Direct EVM · same token and network' : 'NEAR Intents · 1Click'}</strong></div><div className="quote-row"><span>Merchant address</span><strong>{short(recipient)}</strong></div>
+        <p className="helper-text">{quote.provider === 'lifi' ? 'LI.FI is used only as a secondary EVM-to-EVM route when NEAR Intents cannot quote. Review the route and wallet approvals carefully; settlement is confirmed separately.' : quote.directEvm ? 'This fallback does not convert tokens or move funds cross-chain. The merchant must accept this exact token on this exact network. Payment is marked successful only after server-side on-chain verification.' : 'NEAR Intents calculates the conversion and delivery amount shown in this quote. Network gas is separate and paid to the source blockchain.'}</p>
         {quote.quote.minAmountIn && <div className="quote-row"><span>Minimum input</span><strong>{formatUnits(quote.quote.minAmountIn, Number(origin?.decimals || 0))} {origin?.symbol}</strong></div>}
         {quote.quote.maxAmountIn && <div className="quote-row"><span>Maximum input</span><strong>{formatUnits(quote.quote.maxAmountIn, Number(origin?.decimals || 0))} {origin?.symbol}</strong></div>}
         <div className="quote-row"><span>Estimated time</span><strong>{quote.quote.timeEstimate ? Math.ceil(quote.quote.timeEstimate / 60) + ' min' : 'Provider estimate unavailable'}</strong></div><div className="quote-row quote-countdown-row"><span>Quote expires in</span><strong className={quoteExpired ? 'quote-countdown expired' : 'quote-countdown'}>{quoteCountdownLabel}{quoteExpired ? ' · Expired' : quoteSecondsRemaining !== null ? ' remaining' : ''}</strong></div>
