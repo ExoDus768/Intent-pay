@@ -16,7 +16,18 @@ export default function MerchantTools({ open = false, onClose = () => {}, tokens
   const [qrError, setQrError] = useState('');
   const [nearAccountStatus, setNearAccountStatus] = useState('idle');
 
-  const chainOf = t => String(t?.blockchain || '').trim().toLowerCase();
+  const normalizeChain = value => {
+    const raw = String(value || '').trim().toLowerCase().replace(/[_ ]+/g, '-');
+    const aliases = {
+      ethereum: 'eth', 'ethereum-mainnet': 'eth', 'arbitrum-one': 'arbitrum', arb: 'arbitrum',
+      'binance-smart-chain': 'bsc', bnb: 'bsc', 'bnb-chain': 'bsc', binance: 'bsc',
+      'avalanche-c-chain': 'avalanche', avax: 'avalanche', op: 'optimism',
+      matic: 'polygon', pol: 'polygon', ftm: 'fantom', bera: 'berachain',
+      sol: 'solana', xdai: 'gnosis'
+    };
+    return aliases[raw] || raw;
+  };
+  const chainOf = t => normalizeChain(t?.blockchain);
   const chains = useMemo(() => [...new Set([...tokens.filter(t => t?.assetId && chainOf(t)).map(chainOf), 'near'])].sort(), [tokens]);
   const payoutTokens = useMemo(() => tokens
     .filter(t => t?.assetId && destinationChain && chainOf(t) === destinationChain)
