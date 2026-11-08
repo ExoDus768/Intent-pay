@@ -43,7 +43,7 @@ const normalizeBlockchain = (value, assetId = '') => {
   if (nep) return aliases[nep] || nep;
   const oneCs = id.match(/^1cs_v1:([^:]+):/i)?.[1]?.toLowerCase();
   if (oneCs) return aliases[oneCs] || oneCs;
-  return 'near';
+  return null;
 };
 const TOKEN_PRIORITY = ['USDC','USDT','ETH','NEAR','DAI','WETH','WBTC','USDBC','USDE','FRAX','USDS'];
 const tokenPriority = t => { const i = TOKEN_PRIORITY.indexOf(String(t.symbol || '').toUpperCase()); return i < 0 ? TOKEN_PRIORITY.length : i; };
@@ -59,7 +59,7 @@ const normalizeTokenList = data => {
   for (let depth = 0; depth < 4 && !Array.isArray(value); depth++) {
     value = value?.tokens || value?.data || value?.result || value?.assets;
   }
-  return Array.isArray(value) ? value.map(normalizeToken).filter(Boolean) : [];
+  return Array.isArray(value) ? value.map(normalizeToken).filter(token => token?.blockchain) : [];
 };
 const short = (value = '') => value.length > 24 ? value.slice(0, 10) + '…' + value.slice(-8) : value;
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
