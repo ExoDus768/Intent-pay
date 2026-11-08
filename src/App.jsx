@@ -756,7 +756,34 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
       setQuote(data);
       setNotice('Quote ready. Review the payment amount and estimated network gas before approving.');
     } catch (e) {
-      if (requestId === quoteRequestRef.current) setNotice(e.message || 'Could not create quote.');
+      if (requestId === quoteRequestRef.current) {
+        const sameEvmAsset = Boolean(
+          origin && destination &&
+          CHAIN_IDS[tokenChain(origin)] &&
+          tokenChain(origin) === tokenChain(destination) &&
+          origin.contractAddress && destination.contractAddress &&
+          origin.contractAddress.toLowerCase() === destination.contractAddress.toLowerCase() &&
+          isAddress(recipient.trim())
+        );
+        if (sameEvmAsset) {
+          const directAmount = BigInt(atomicAmount);
+          setQuote({
+            directEvm: true,
+            quote: {
+              amountIn: directAmount.toString(),
+              amountOut: directAmount.toString(),
+              amountInFormatted: formatUnits(directAmount, Number(origin.decimals)),
+              amountOutFormatted: formatUnits(directAmount, Number(destination.decimals)),
+              amountInUsd: fixedOutputCheckout ? String(Number(amount)) : (Number(origin.price) > 0 ? String(Number(amount) * Number(origin.price)) : undefined),
+              deadline: new Date(Date.now() + 5 * 60 * 1000).toISOString()
+            }
+          });
+          setGasEstimate({ kind: 'unavailable', label: 'Your wallet will show the network fee before approval' });
+          setNotice('NEAR Intents could not quote this route. Same-chain, same-token direct payment is available to the merchant address instead.');
+        } else {
+          setNotice(e.message || 'Could not create quote. This route has no safe direct-payment fallback.');
+        }
+      }
     }
     finally { if (requestId === quoteRequestRef.current) setBusy(false); }
   }
@@ -783,6 +810,69 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
 
   async function sendDeposit() {
     if (!quote?.quote || !origin) return;
+    if (quote.directEvm) {
+      if (!wallet || !destination || !recipient.trim()) return setNotice('Connect your EVM wallet and confirm the merchant address.');
+      const chainId = CHAIN_IDS[tokenChain(origin)];
+      if (!chainId || tokenChain(origin) !== tokenChain(destination) ||
+          !origin.contractAddress || origin.contractAddress.toLowerCase() !== destination.contractAddress?.toLowerCase() ||
+          !isAddress(recipient.trim())) return setNotice('Direct fallback is only available for the exact same EVM token and network.');
+      setBusy(true);
+      try {
+        const injected = activeEvmProviderRef.current || window.ethereum;
+        if (!injected) throw new Error('Reconnect your EVM wallet before paying.');
+        let provider = new BrowserProvider(injected);
+        let network = await provider.getNetwork();
+        if (Number(network.chainId) !== chainId) {
+          await provider.send('wallet_switchEthereumChain', [{ chainId: '0x' + chainId.toString(16) }]);
+          provider = new BrowserProvider(injected);
+          network = await provider.getNetwork();
+        }
+        if (Number(network.chainId) !== chainId) throw new Error('Switch to the selected payment network before paying.');
+        const signer = await provider.getSigner();
+        const sender = await signer.getAddress();
+        const amountAtomic = BigInt(quote.quote.amountIn);
+        setNotice('Direct payment: review the same-chain token, amount, and merchant address in your wallet.');
+        const token = new Contract(origin.contractAddress, ERC20_ABI, signer);
+        const tx = await token.transfer(recipient.trim(), amountAtomic);
+        setTxHash(tx.hash);
+        setSwapStatus('VERIFYING');
+        setNotice('Transaction broadcast. Waiting for confirmation and server-side verification…');
+        const receipt = await tx.wait(2);
+        if (!receipt || receipt.status !== 1) throw new Error('The direct payment transaction did not confirm successfully.');
+        const verifyResponse = await fetch('/api/direct-payment/verify', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            txHash: tx.hash, chainId, assetId: origin.assetId,
+            sender, recipient: recipient.trim(), amount: amountAtomic.toString()
+          })
+        });
+        const verified = await verifyResponse.json();
+        if (!verifyResponse.ok || verified.verified !== true) throw new Error(verified.error || 'The transaction could not be verified as the exact merchant payment. Do not retry until its status is checked.');
+        setSwapStatus('SUCCESS');
+        saveCustomerHistory({
+          id: 'direct:' + chainId + ':' + tx.hash.toLowerCase(),
+          account: sender,
+          merchant: checkoutParams.get('merchantName') || 'Merchant payment',
+          sourceNetwork: chainLabel(tokenChain(origin)),
+          sourceToken: origin.symbol || 'TOKEN',
+          destinationNetwork: chainLabel(tokenChain(destination)),
+          destinationToken: destination.symbol || 'TOKEN',
+          amountPaid: formatUnits(amountAtomic, Number(origin.decimals)),
+          amountReceived: formatUnits(amountAtomic, Number(destination.decimals)),
+          transactionHash: tx.hash,
+          depositAddress: recipient.trim(),
+          status: 'SUCCESS',
+          paymentMethod: 'Direct EVM transfer',
+          fixedAmount: Boolean(isFixedWidgetCheckout)
+        });
+        notifyPaymentSuccess();
+        setNotice('Direct EVM payment verified on-chain. The exact token and amount reached the merchant address.');
+      } catch (error) {
+        setSwapStatus(txHash ? 'PENDING_VERIFICATION' : 'FAILED');
+        setNotice(error.message || 'Direct EVM payment could not be completed. Check the transaction before retrying.');
+      } finally { setBusy(false); }
+      return;
+    }
     let activeQuote = quote;
     if (!activeQuote.quote.depositAddress) {
       setBusy(true);
@@ -1026,12 +1116,12 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
         {gasEstimate?.kind === 'evm' && <p className="helper-text">{gasEstimate.label}. The final fee can change before confirmation; your wallet shows the amount to approve.</p>}
         {gasEstimate?.kind === 'near' && <p className="helper-text">NEAR network gas is paid separately from your NEAR balance. Review the final fee in your NEAR wallet before approving.</p>}
         {gasEstimate?.kind === 'unavailable' && <p className="helper-text">Could not estimate gas: {gasEstimate.label}. Your wallet will show the required network fee before you sign.</p>}
-        <div className="quote-row"><span>Routing</span><strong>NEAR Intents · 1Click</strong></div><div className="quote-row"><span>Merchant address</span><strong>{short(recipient)}</strong></div>
-        <p className="helper-text">NEAR Intents calculates the conversion and delivery amount shown in this quote. Network gas is separate and paid to the source blockchain.</p>
+        <div className="quote-row"><span>Routing</span><strong>{quote.directEvm ? 'Direct EVM · same token and network' : 'NEAR Intents · 1Click'}</strong></div><div className="quote-row"><span>Merchant address</span><strong>{short(recipient)}</strong></div>
+        <p className="helper-text">{quote.directEvm ? 'This fallback does not convert tokens or move funds cross-chain. The merchant must accept this exact token on this exact network. Payment is marked successful only after server-side on-chain verification.' : 'NEAR Intents calculates the conversion and delivery amount shown in this quote. Network gas is separate and paid to the source blockchain.'}</p>
         {quote.quote.minAmountIn && <div className="quote-row"><span>Minimum input</span><strong>{formatUnits(quote.quote.minAmountIn, Number(origin?.decimals || 0))} {origin?.symbol}</strong></div>}
         {quote.quote.maxAmountIn && <div className="quote-row"><span>Maximum input</span><strong>{formatUnits(quote.quote.maxAmountIn, Number(origin?.decimals || 0))} {origin?.symbol}</strong></div>}
         <div className="quote-row"><span>Estimated time</span><strong>{quote.quote.timeEstimate ? Math.ceil(quote.quote.timeEstimate / 60) + ' min' : 'Provider estimate unavailable'}</strong></div><div className="quote-row quote-countdown-row"><span>Quote expires in</span><strong className={quoteExpired ? 'quote-countdown expired' : 'quote-countdown'}>{quoteCountdownLabel}{quoteExpired ? ' · Expired' : quoteSecondsRemaining !== null ? ' remaining' : ''}</strong></div>
-        {quote.quote.depositAddress ? <div className="deposit-address"><span>Unique deposit address</span><code>{quote.quote.depositAddress}</code></div> : <p className="helper-text">Payment address is created securely when you tap Confirm Pay.</p>}
+        {quote.quote.depositAddress ? <div className="deposit-address"><span>Unique deposit address</span><code>{quote.quote.depositAddress}</code></div> : <p className="helper-text">{quote.directEvm ? 'Funds go directly to the merchant EVM address shown above.' : 'Payment address is created securely when you tap Confirm Pay.'}</p>}
         {quote.quote.depositMemo && <div className="deposit-address"><span>Required memo</span><code>{quote.quote.depositMemo}</code></div>}
         {txHash && <div className="tx-details"><span>Deposit transaction</span><code>{short(txHash)}</code><span>Status: {paymentStatus || 'Waiting'}</span></div>}
         {txHash && <button className="secondary" onClick={refreshStatus} disabled={busy}>Refresh payment status</button>}
