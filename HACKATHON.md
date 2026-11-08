@@ -1,8 +1,8 @@
-# IntentPay — NEAR Intents Hackathon
+# XoDuspay — NEAR Intents Hackathon
 
 ## Project summary
 
-IntentPay is a universal crypto checkout built around **NEAR Intents and the 1Click API**. Any merchant or app can publish a checkout button. Customers open a hosted checkout and pay from a supported wallet and network, while the merchant receives their configured payout asset at their receiving address.
+XoDuspay is a universal crypto checkout built around **NEAR Intents and the 1Click API**. Any merchant or app can publish a checkout button. Customers open a hosted checkout and pay from a supported wallet and network, while the merchant receives their configured payout asset at their receiving address.
 
 The project is focused entirely on the universal checkout widget. Customers choose a supported payment asset and merchants receive their configured payout asset through the checkout flow.
 
@@ -10,11 +10,11 @@ The project is focused entirely on the universal checkout widget. Customers choo
 
 1. Load supported assets from the live 1Click token registry.
 2. The merchant selects a payout network, token, recipient address and fixed or variable amount mode in the Merchant Workspace.
-3. IntentPay generates a hosted checkout URL and embeddable button.
+3. XoDuspay generates a hosted checkout URL and embeddable button.
 4. The customer opens checkout, selects a supported source network and token, and connects their wallet.
-5. IntentPay requests a committed 1Click quote with a unique deposit address.
+5. XoDuspay requests a committed 1Click quote with a unique deposit address.
 6. The customer reviews the amount, quote, fees and destination, then approves the deposit in their wallet.
-7. IntentPay submits the confirmed deposit transaction where required and polls 1Click status.
+7. XoDuspay submits the confirmed deposit transaction where required and polls 1Click status.
 8. Only 1Click `SUCCESS` confirms completed delivery.
 
 The server keeps the 1Click JWT private. The browser never receives the API secret.
@@ -35,7 +35,7 @@ The server keeps the 1Click JWT private. The browser never receives the API secr
 
 ## Demo flow
 
-1. Open the IntentPay homepage.
+1. Open the XoDuspay homepage.
 2. Open the Merchant Workspace and configure a payout asset, receiving address and amount mode.
 3. Copy the generated checkout link or embed snippet.
 4. Open the hosted checkout as a customer.
