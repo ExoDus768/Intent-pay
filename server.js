@@ -183,7 +183,7 @@ async function verifyNearHistorySignature({ wallet, message, nonce, signature, p
   const rpc = await fetch('https://rpc.mainnet.near.org', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ jsonrpc: '2.0', id: 'intentpay-history-auth', method: 'query', params: { request_type: 'view_access_key_list', finality: 'final', account_id: wallet } })
+    body: JSON.stringify({ jsonrpc: '2.0', id: 'xoduspay-history-auth', method: 'query', params: { request_type: 'view_access_key_list', finality: 'final', account_id: wallet } })
   });
   const data = await rpc.json();
   if (!rpc.ok || data.error) return false;
@@ -258,8 +258,8 @@ app.post('/api/history/challenge', (req, res) => {
       return res.status(400).json({ error: 'A valid connected wallet address is required.' });
     }
     const nonce = randomBytes(32).toString('hex');
-    const recipient = 'intentpay';
-    const message = 'Sign in to IntentPay transaction history\nWallet: ' + wallet + '\nNonce: ' + nonce;
+    const recipient = 'xoduspay';
+    const message = 'Sign in to XoDuspay transaction history\nWallet: ' + wallet + '\nNonce: ' + nonce;
     const challengeToken = signHistoryPayload({ type: 'challenge', wallet, chain, nonce, recipient, message, iat: Date.now() });
     res.json({ message, nonce, recipient, challengeToken });
   } catch (error) { res.status(error.status || 500).json({ error: error.message }); }
@@ -306,7 +306,7 @@ app.put('/api/history', async (req, res) => {
   } catch (error) { res.status(error.status || 500).json({ error: error.message }); }
 });
 
-app.get('/api/health', (_req, res) => res.json({ ok: true, service: 'intentpay-api' }));
+app.get('/api/health', (_req, res) => res.json({ ok: true, service: 'xoduspay-api' }));
 
 app.get('/api/config', (_req, res) => res.json({
   oneClickConfigured: Boolean(process.env.ONECLICK_JWT),
@@ -336,7 +336,7 @@ app.post('/api/quote', async (req, res) => {
       refundType: 'ORIGIN_CHAIN',
       slippageTolerance: input.slippageTolerance,
       deadline: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
-      referral: 'intentpay'
+      referral: 'xoduspay'
     };
     const data = await oneClick('/quote', { method: 'POST', body: JSON.stringify(request) });
     const inputUsd = Number(data?.quote?.amountInUsd);
@@ -445,6 +445,6 @@ app.get('/api/status', async (req, res) => {
   } catch (error) { res.status(error.status || 502).json({ error: error.message }); }
 });
 
-if (!process.env.VERCEL) app.listen(PORT, () => console.log(`IntentPay API listening on :${PORT}`));
+if (!process.env.VERCEL) app.listen(PORT, () => console.log(`XoDuspay API listening on :${PORT}`));
 
 export default app;
