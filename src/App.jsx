@@ -766,7 +766,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
               method: 'POST', headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 originAsset: origin.assetId, destinationAsset: destination.assetId,
-                amount: atomicAmount, user: wallet, recipient: recipient.trim()
+                amount: atomicAmount, user: wallet, recipient: recipient.trim(), fixedOutput: fixedOutputCheckout
               })
             });
             const lifiData = await lifiResponse.json();
@@ -1207,7 +1207,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
       {!configured && <p className="warning">NEAR Intents routing requires a server-side 1Click JWT. Same-chain, same-token EVM direct payments may still be available when the merchant accepts the selected token and network. Never paste API keys into this page.</p>}
       <p className="notice">{notice}</p>
       {quote?.quote && <div className="quote-card">
-        <div className="quote-title">Mainnet quote details</div>{fixedOutputCheckout && <p className="helper-text">Fixed USD checkout · target price ${Number(amount).toFixed(2)} USD. NEAR Intents calculates the input amount required to deliver the merchant's selected payout token at this value.</p>}
+        <div className="quote-title">Mainnet quote details</div>{fixedOutputCheckout && <p className="helper-text">Fixed USD checkout · target price ${Number(amount).toFixed(2)} USD. {quote.provider === 'lifi' ? 'LI.FI calculates the input amount required to deliver this target value.' : 'NEAR Intents calculates the input amount required to deliver the merchant\'s selected payout token at this value.'}</p>}
         <div className="quote-row"><span>Pay</span><strong>{quote.quote.amountInFormatted || formatUnits(quote.quote.amountIn, Number(origin?.decimals || 0))} {origin?.symbol}</strong></div>
         <div className="quote-row"><span>Estimated receive</span><strong>{(quote.quote.amountOutFormatted || quote.quote.amountOut) + ' ' + destination?.symbol}</strong></div>
         {quote.quote.amountInUsd && <div className="quote-row"><span>Payment value</span><strong>${Number(quote.quote.amountInUsd).toFixed(4)} USD</strong></div>}
@@ -1220,7 +1220,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
         {quote.quote.minAmountIn && <div className="quote-row"><span>Minimum input</span><strong>{formatUnits(quote.quote.minAmountIn, Number(origin?.decimals || 0))} {origin?.symbol}</strong></div>}
         {quote.quote.maxAmountIn && <div className="quote-row"><span>Maximum input</span><strong>{formatUnits(quote.quote.maxAmountIn, Number(origin?.decimals || 0))} {origin?.symbol}</strong></div>}
         <div className="quote-row"><span>Estimated time</span><strong>{quote.quote.timeEstimate ? Math.ceil(quote.quote.timeEstimate / 60) + ' min' : 'Provider estimate unavailable'}</strong></div><div className="quote-row quote-countdown-row"><span>Quote expires in</span><strong className={quoteExpired ? 'quote-countdown expired' : 'quote-countdown'}>{quoteCountdownLabel}{quoteExpired ? ' · Expired' : quoteSecondsRemaining !== null ? ' remaining' : ''}</strong></div>
-        {quote.quote.depositAddress ? <div className="deposit-address"><span>Unique deposit address</span><code>{quote.quote.depositAddress}</code></div> : <p className="helper-text">{quote.directEvm ? 'Funds go directly to the merchant EVM address shown above.' : 'Payment address is created securely when you tap Confirm Pay.'}</p>}
+        {quote.quote.depositAddress ? <div className="deposit-address"><span>Unique deposit address</span><code>{quote.quote.depositAddress}</code></div> : <p className="helper-text">{quote.directEvm ? 'Funds go directly to the merchant EVM address shown above.' : '{quote.provider === 'lifi' ? 'LI.FI provides a wallet transaction for the selected EVM route.' : 'Payment address is created securely when you tap Confirm Pay.'}'}</p>}
         {quote.quote.depositMemo && <div className="deposit-address"><span>Required memo</span><code>{quote.quote.depositMemo}</code></div>}
         {txHash && <div className="tx-details"><span>Deposit transaction</span><code>{short(txHash)}</code><span>Status: {paymentStatus || 'Waiting'}</span></div>}
         {txHash && <button className="secondary" onClick={refreshStatus} disabled={busy}>Refresh payment status</button>}
