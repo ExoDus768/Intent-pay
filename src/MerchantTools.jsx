@@ -28,7 +28,7 @@ export default function MerchantTools({ open = false, onClose = () => {}, tokens
     return aliases[raw] || raw;
   };
   const chainOf = t => normalizeChain(t?.blockchain);
-  const chains = useMemo(() => [...new Set([...tokens.filter(t => t?.assetId && chainOf(t)).map(chainOf), 'near'])].sort(), [tokens]);
+  const chains = useMemo(() => [...new Set(tokens.filter(t => t?.assetId && chainOf(t)).map(chainOf))].sort(), [tokens]);
   const payoutTokens = useMemo(() => tokens
     .filter(t => t?.assetId && destinationChain && chainOf(t) === destinationChain)
     .sort((a, b) => String(a.symbol || '').localeCompare(String(b.symbol || ''))), [tokens, destinationChain]);
