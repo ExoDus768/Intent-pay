@@ -74,7 +74,7 @@ async function oneClick(path, options = {}, authenticated = true) {
   return data;
 }
 
-function normalizeBlockchain = (value, assetId = '') => {
+const normalizeBlockchain = (value, assetId = '') => {
   const raw = String(value || '').trim().toLowerCase().replace(/[_ ]+/g, '-');
   const aliases = {
     'ethereum':'eth','ethereum-mainnet':'eth','arbitrum-one':'arbitrum','arb':'arbitrum',
