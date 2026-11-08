@@ -14,9 +14,6 @@ export default function MerchantTools({ open = false, onClose = () => {}, tokens
   const [qrDataUrl, setQrDataUrl] = useState('');
   const [qrError, setQrError] = useState('');
   const [nearAccountStatus, setNearAccountStatus] = useState('idle');
-  const [receipts, setReceipts] = useState([]);
-  const [receiptsLoading, setReceiptsLoading] = useState(false);
-  const [receiptsError, setReceiptsError] = useState('');
 
   const chainOf = t => String(t?.blockchain || '').trim().toLowerCase();
   const chains = useMemo(() => [...new Set(tokens.filter(t => t?.assetId && chainOf(t)).map(chainOf))].sort(), [tokens]);
@@ -90,27 +87,6 @@ export default function MerchantTools({ open = false, onClose = () => {}, tokens
     });
     return () => { active = false; };
   }, [config]);
-
-
-  async function loadReceipts() {
-    if (!selected || !recipient.trim() || !addressValid) return;
-    setReceiptsLoading(true);
-    setReceiptsError('');
-    try {
-      const params = new URLSearchParams({ assetId: destinationAsset, recipient: recipient.trim() });
-      const response = await fetch('/api/merchant/receipts?' + params.toString(), { cache: 'no-store' });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Could not load merchant receipts.');
-      setReceipts(Array.isArray(data.receipts) ? data.receipts : []);
-    } catch (err) {
-      setReceiptsError(err.message || 'Could not load merchant receipts.');
-    } finally { setReceiptsLoading(false); }
-  }
-
-  useEffect(() => {
-    setReceipts([]);
-    if (ready) loadReceipts();
-  }, [ready, destinationAsset, recipient, addressValid]);
 
   async function copy(value, label) {
     try { await navigator.clipboard.writeText(value); setError(''); setNotice(label + ' copied.'); }
@@ -198,26 +174,6 @@ export default function MerchantTools({ open = false, onClose = () => {}, tokens
             </div>
           </>}
           {!ready && <p className="widget-setup-hint">Choose a payout network and token, enter your receiving wallet address, and complete the amount settings to generate your widget.</p>}
-
-          <div className="section-rule"><span>PAYMENT RECEIPTS</span></div>
-          <div className="merchant-receipts">
-            <div className="merchant-receipts-head">
-              <div><strong>Confirmed payments</strong><p className="merchant-hint">Receipts appear after NEAR Intents reports SUCCESS for a checkout created with this exact payout token and receiving address.</p></div>
-              <button type="button" className="secondary" onClick={loadReceipts} disabled={!ready || receiptsLoading}>{receiptsLoading ? 'Refreshing…' : 'Refresh receipts'}</button>
-            </div>
-            {receiptsError && <p className="merchant-error" role="alert">{receiptsError}</p>}
-            {!ready ? <p className="merchant-hint">Set your payout network, token and receiving address to view receipts for this merchant.</p> :
-              receiptsLoading && receipts.length === 0 ? <p className="merchant-hint">Loading confirmed payments…</p> :
-              receipts.length === 0 ? <p className="merchant-hint">No provider-confirmed payments yet. Keep this payout setup the same for receipts to appear here.</p> :
-              <div className="merchant-receipts-list">{receipts.map(item => <article className="merchant-receipt" key={item.id}>
-                <div className="merchant-receipt-top"><strong>{item.merchant || 'Merchant payment'}</strong><span className="history-status status-completed">COMPLETED</span></div>
-                <div><strong>{item.payoutAmount || 'Amount not supplied'} </strong><span>{selected?.symbol || 'payout token'}</span></div>
-                <small>{item.provider || 'Provider-confirmed'} · {item.completedAt ? new Date(item.completedAt).toLocaleString() : 'Completion time unavailable'}</small>
-                {item.destinationTxHash && <small>Destination transaction: <code>{item.destinationTxHash.slice(0, 12)}…{item.destinationTxHash.slice(-8)}</code></small>}
-                <small>Receipt reference: <code>{item.id.slice(0, 16)}</code></small>
-              </article>)}</div>}
-            <p className="merchant-hint">This ledger is read from XoDuspay's server storage, not from customer screenshots. A receipt is created only after the payment provider reports successful settlement. This initial ledger covers NEAR Intents / 1Click checkouts; LI.FI and direct-transfer receipts are not yet included.</p>
-          </div>
           <p className="merchant-hint">The button opens XoDuspay's hosted mainnet checkout. Customers connect their own wallet, review the live NEAR Intents quote and network fee, then approve the payment. Your receiving address and payout asset are included in the public checkout link.</p>
           {error && <p className="merchant-error">{error}</p>}
           {notice && <p className="merchant-notice">{notice}</p>}
