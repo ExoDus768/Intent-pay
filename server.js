@@ -3,15 +3,41 @@ import express from 'express';
 import cors from 'cors';
 import { createHash, createHmac, randomBytes, timingSafeEqual, createPublicKey, verify as verifySignature } from 'node:crypto';
 import { verifyMessage, JsonRpcProvider, Interface, isAddress } from 'ethers';
-import { get as getBlob, put as putBlob } from '@vercel/blob';
+import { del as delBlob, get as getBlob, list as listBlobs, put as putBlob } from '@vercel/blob';
+import { rateLimit } from 'express-rate-limit';
 
 const app = express();
 const PORT = Number(process.env.PORT || 3001);
 const API_BASE = 'https://1click.chaindefuser.com/v0';
 const TERMINAL = new Set(['SUCCESS', 'FAILED', 'REFUNDED', 'INCOMPLETE_DEPOSIT']);
 app.disable('x-powered-by');
-app.use(cors({ origin: process.env.APP_ORIGIN ? process.env.APP_ORIGIN.split(',') : true }));
+// Vercel is the single trusted reverse-proxy hop for client IP rate limiting.
+app.set('trust proxy', 1);
+const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production';
+const allowedOrigins = new Set((process.env.APP_ORIGIN || '').split(',').map(value => value.trim()).filter(Boolean));
+app.use(cors({
+  origin(origin, callback) {
+    if (!origin) return callback(null, false);
+    if (allowedOrigins.has(origin)) return callback(null, true);
+    if (!isProduction && /^https?:\\/\\/(localhost|127\\.0\\.0\\.1)(:\\d+)?$/.test(origin)) return callback(null, true);
+    return callback(null, false);
+  }
+}));
 app.use(express.json({ limit: '32kb' }));
+
+// MemoryStore is a per-instance safety net. For globally consistent limits across
+// Vercel instances, replace it with a shared Redis/Upstash store.
+const makeLimiter = (windowMs, limit, message) => rateLimit({
+  windowMs, limit, standardHeaders: true, legacyHeaders: false,
+  message: { error: message }, validate: { trustProxy: false }
+});
+const apiLimiter = makeLimiter(60 * 1000, 180, 'Too many API requests. Please slow down.');
+app.use('/api', apiLimiter);
+const quoteLimiter = makeLimiter(60 * 1000, 12, 'Too many quote requests. Please wait before requesting another quote.');
+const historyChallengeLimiter = makeLimiter(10 * 60 * 1000, 5, 'Too many wallet sign-in challenges. Please try again later.');
+const historyVerifyLimiter = makeLimiter(10 * 60 * 1000, 10, 'Too many wallet signature attempts. Please try again later.');
+const lifiQuoteLimiter = makeLimiter(60 * 1000, 12, 'Too many fallback quote requests. Please wait.');
+const paymentActionLimiter = makeLimiter(60 * 1000, 20, 'Too many payment verification requests. Please wait.');
 
 let tokenCache = { value: null, expiresAt: 0 };
 
@@ -60,6 +86,23 @@ function getToken(tokens, assetId) {
   return tokens.find(token => token.assetId === assetId);
 }
 
+const EVM_BLOCKCHAINS = new Set([
+  'eth', 'ethereum', 'base', 'arb', 'arbitrum', 'op', 'optimism',
+  'polygon', 'bsc', 'bnb', 'avax', 'avalanche', 'gnosis', 'scroll',
+  'aurora', 'bera', 'berachain', 'fantom', 'ftm', 'linea', 'zksync',
+  'mantle', 'mode', 'blast', ' celo', 'celo', 'worldchain'
+]);
+function isValidDestinationRecipient(recipient, blockchain) {
+  const chain = String(blockchain || '').trim().toLowerCase();
+  if (chain === 'near') return isNearAccount(recipient);
+  if (EVM_BLOCKCHAINS.has(chain)) return isAddress(recipient);
+  if (['sol', 'solana'].includes(chain)) {
+    try { return decodeBase58(recipient).length === 32; } catch { return false; }
+  }
+  // Fail closed for chains without an implemented address/checksum validator.
+  return false;
+}
+
 function validateQuoteBody(body, tokens) {
   const { originAsset, destinationAsset, amount, recipient, refundTo, nearSenderAccount, swapType = 'EXACT_INPUT', slippageTolerance = 100 } = body || {};
   if (!originAsset || !destinationAsset || !amount || !recipient || !refundTo) {
@@ -98,12 +141,14 @@ function validateQuoteBody(body, tokens) {
     error.status = 400;
     throw error;
   }
-  if (typeof recipient !== 'string' || recipient.trim().length < 2 || recipient.length > 128) {
-    const error = new Error('The merchant payout address is invalid.');
+  const normalizedRecipient = typeof recipient === 'string' ? recipient.trim() : '';
+  if (!normalizedRecipient || normalizedRecipient.length > 128 ||
+      !isValidDestinationRecipient(normalizedRecipient, destination.blockchain)) {
+    const error = new Error(`The merchant payout address is not valid for the destination network (${destination.blockchain || 'unknown'}).`);
     error.status = 400;
     throw error;
   }
-  return { origin, destination, amount: String(amount), recipient: recipient.trim(), refundTo, nearSenderAccount, isNearOrigin, slippageTolerance, swapType };
+  return { origin, destination, amount: String(amount), recipient: normalizedRecipient, refundTo, nearSenderAccount, isNearOrigin, slippageTolerance, swapType };
 }
 
 
@@ -130,6 +175,40 @@ function readHistoryPayload(token) {
   try { actual = Buffer.from(signature, 'base64url'); } catch { return null; }
   if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) return null;
   try { return JSON.parse(Buffer.from(body, 'base64url').toString('utf8')); } catch { return null; }
+}
+const locallyConsumedChallenges = new Set();
+let challengeCleanupCounter = 0;
+async function cleanupConsumedChallenges() {
+  try {
+    const page = await listBlobs({ prefix: 'xoduspay-auth-consumed/', limit: 1000 });
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+    const stale = page.blobs.filter(blob => new Date(blob.uploadedAt).getTime() < cutoff);
+    if (stale.length) await delBlob(stale.map(blob => blob.pathname), { access: 'private' });
+  } catch { /* Cleanup is best-effort; replay protection itself remains fail-closed. */ }
+}
+async function consumeChallengeNonce(nonce) {
+  if (!process.env.BLOB_READ_WRITE_TOKEN) {
+    if (isProduction) {
+      const error = new Error('Persistent challenge replay protection is not configured. Set BLOB_READ_WRITE_TOKEN.');
+      error.status = 503;
+      throw error;
+    }
+    if (locallyConsumedChallenges.has(nonce)) return false;
+    locallyConsumedChallenges.add(nonce);
+    return true;
+  }
+  const pathname = 'xoduspay-auth-consumed/' + createHash('sha256').update(nonce).digest('hex') + '.json';
+  try {
+    await putBlob(pathname, JSON.stringify({ consumedAt: Date.now() }), {
+      access: 'private', contentType: 'application/json', allowOverwrite: false, addRandomSuffix: false
+    });
+    challengeCleanupCounter++;
+    if (challengeCleanupCounter % 50 === 0) void cleanupConsumedChallenges();
+    return true;
+  } catch (error) {
+    if (isBlobWriteConflict(error)) return false;
+    throw error;
+  }
 }
 function requireHistorySession(req) {
   const bearer = String(req.headers.authorization || '').match(/^Bearer (.+)$/i)?.[1];
@@ -190,6 +269,29 @@ async function verifyNearHistorySignature({ wallet, message, nonce, signature, p
   if (!rpc.ok || data.error) return false;
   return (data.result?.keys || []).some(item => item.public_key === publicKey);
 }
+function normalizeHistoryDate(value, fallback) {
+  if (value === undefined || value === null || value === '') return fallback;
+  let date;
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) date = null;
+    else date = new Date(value);
+  } else if (typeof value === 'string' && !/^[-+]?\\d+$/.test(value.trim())) {
+    date = new Date(value);
+  } else {
+    date = null;
+  }
+  if (!date || !Number.isFinite(date.getTime())) {
+    const error = new Error('Transaction history contains an invalid createdAt or updatedAt timestamp.');
+    error.status = 400;
+    throw error;
+  }
+  return date.toISOString();
+}
+function historyTimestamp(row) {
+  const value = row.updatedAt || row.createdAt;
+  const timestamp = typeof value === 'number' ? value : Date.parse(value);
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
 function cleanHistoryEntries(entries) {
   if (!Array.isArray(entries)) {
     const error = new Error('Transaction history must be an array.');
@@ -210,17 +312,20 @@ function cleanHistoryEntries(entries) {
     depositAddress: String(item.depositAddress || '').slice(0, 180),
     status: String(item.status || 'PROCESSING').slice(0, 40),
     fixedAmount: Boolean(item.fixedAmount),
-    createdAt: item.createdAt || new Date().toISOString(),
-    updatedAt: item.updatedAt || new Date().toISOString()
+    createdAt: normalizeHistoryDate(item.createdAt, new Date().toISOString()),
+    updatedAt: normalizeHistoryDate(item.updatedAt, new Date().toISOString())
   }));
 }
-async function readWalletHistory(wallet) {
+async function readWalletHistorySnapshot(wallet) {
   const pathname = 'customer-history/' + historyWalletKey(wallet) + '.json';
   const blob = await getBlob(pathname, { access: 'private' });
-  if (!blob || blob.statusCode !== 200) return [];
+  if (!blob || blob.statusCode !== 200) return { entries: [], etag: null };
   const raw = await new Response(blob.stream).text();
   const parsed = JSON.parse(raw || '[]');
-  return cleanHistoryEntries(parsed);
+  return { entries: cleanHistoryEntries(parsed), etag: blob.blob?.etag || null };
+}
+async function readWalletHistory(wallet) {
+  return (await readWalletHistorySnapshot(wallet)).entries;
 }
 function mergeHistoryEntries(...groups) {
   const byId = new Map();
@@ -228,8 +333,8 @@ function mergeHistoryEntries(...groups) {
     if (!row?.id) continue;
     const previous = byId.get(row.id);
     if (!previous) { byId.set(row.id, row); continue; }
-    const incomingTime = Date.parse(row.updatedAt || row.createdAt || 0);
-    const previousTime = Date.parse(previous.updatedAt || previous.createdAt || 0);
+    const incomingTime = historyTimestamp(row);
+    const previousTime = historyTimestamp(previous);
     const latest = incomingTime >= previousTime ? row : previous;
     byId.set(row.id, {
       ...previous,
@@ -238,20 +343,40 @@ function mergeHistoryEntries(...groups) {
       updatedAt: latest.updatedAt || latest.createdAt
     });
   }
-  return [...byId.values()].sort((a, b) =>
-    Date.parse(b.updatedAt || b.createdAt || 0) - Date.parse(a.updatedAt || a.createdAt || 0)
-  ).slice(0, 100);
+  return [...byId.values()].sort((a, b) => historyTimestamp(b) - historyTimestamp(a)).slice(0, 100);
 }
-async function writeWalletHistory(wallet, entries) {
+async function writeWalletHistory(wallet, entries, etag) {
   const pathname = 'customer-history/' + historyWalletKey(wallet) + '.json';
   await putBlob(pathname, JSON.stringify(cleanHistoryEntries(entries)), {
     access: 'private',
     contentType: 'application/json',
-    allowOverwrite: true,
+    allowOverwrite: Boolean(etag),
+    ...(etag ? { ifMatch: etag } : {}),
     cacheControlMaxAge: 60
   });
 }
-app.post('/api/history/challenge', (req, res) => {
+function isBlobWriteConflict(error) {
+  return [409, 412].includes(Number(error?.statusCode || error?.status)) ||
+    /precondition|already exists|conflict/i.test(String(error?.name || '') + ' ' + String(error?.message || ''));
+}
+async function updateWalletHistory(wallet, incoming) {
+  // Compare-and-swap on the Blob ETag prevents concurrent devices from overwriting
+  // a newer snapshot. Retry from the latest snapshot when another write wins.
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const snapshot = await readWalletHistorySnapshot(wallet);
+    const entries = mergeHistoryEntries(snapshot.entries, incoming);
+    try {
+      await writeWalletHistory(wallet, entries, snapshot.etag);
+      return entries;
+    } catch (error) {
+      if (!isBlobWriteConflict(error) || attempt === 5) throw error;
+    }
+  }
+  const error = new Error('Transaction history changed concurrently. Please retry your save.');
+  error.status = 409;
+  throw error;
+}
+app.post('/api/history/challenge', historyChallengeLimiter, (req, res) => {
   try {
     const wallet = String(req.body?.wallet || '').trim();
     const chain = req.body?.chain === 'near' ? 'near' : 'evm';
@@ -262,15 +387,18 @@ app.post('/api/history/challenge', (req, res) => {
     const nonce = randomBytes(32).toString('hex');
     const recipient = 'xoduspay';
     const message = 'Sign in to XoDuspay transaction history\nWallet: ' + wallet + '\nNonce: ' + nonce;
-    const challengeToken = signHistoryPayload({ type: 'challenge', wallet, chain, nonce, recipient, message, iat: Date.now() });
+    const iat = Date.now();
+    const challengeToken = signHistoryPayload({ type: 'challenge', wallet, chain, nonce, recipient, message, iat, exp: iat + 5 * 60 * 1000 });
     res.json({ message, nonce, recipient, challengeToken });
   } catch (error) { res.status(error.status || 500).json({ error: error.message }); }
 });
-app.post('/api/history/verify', async (req, res) => {
+app.post('/api/history/verify', historyVerifyLimiter, async (req, res) => {
   try {
     const challenge = readHistoryPayload(req.body?.challengeToken);
-    if (!challenge || challenge.type !== 'challenge' || Date.now() - challenge.iat > 5 * 60 * 1000 ||
-        challenge.iat > Date.now() + 30000) {
+    if (!challenge || challenge.type !== 'challenge' || !Number.isFinite(challenge.iat) ||
+        !Number.isFinite(challenge.exp) || challenge.exp !== challenge.iat + 5 * 60 * 1000 ||
+        Date.now() > challenge.exp || challenge.iat > Date.now() + 30000 ||
+        typeof challenge.nonce !== 'string' || !/^[a-f0-9]{64}$/.test(challenge.nonce)) {
       return res.status(401).json({ error: 'Wallet sign-in request expired. Please try again.' });
     }
     let valid = false;
@@ -284,6 +412,9 @@ app.post('/api/history/verify', async (req, res) => {
       });
     }
     if (!valid) return res.status(401).json({ error: 'Wallet signature could not be verified. No history was shared.' });
+    if (!await consumeChallengeNonce(challenge.nonce)) {
+      return res.status(401).json({ error: 'This wallet sign-in challenge has already been used. Request a new one.' });
+    }
     const token = signHistoryPayload({ type: 'session', wallet: challenge.wallet, chain: challenge.chain, exp: Date.now() + 60 * 60 * 1000 });
     res.json({ token, expiresIn: 3600 });
   } catch (error) { res.status(error.status || 500).json({ error: error.message }); }
@@ -300,9 +431,7 @@ app.put('/api/history', async (req, res) => {
   try {
     const session = requireHistorySession(req);
     const incoming = cleanHistoryEntries(req.body?.entries);
-    const existing = await readWalletHistory(session.wallet);
-    const entries = mergeHistoryEntries(existing, incoming);
-    await writeWalletHistory(session.wallet, entries);
+    const entries = await updateWalletHistory(session.wallet, incoming);
     res.set('Cache-Control', 'private, no-store');
     res.json({ ok: true, count: entries.length, entries });
   } catch (error) { res.status(error.status || 500).json({ error: error.message }); }
@@ -321,7 +450,7 @@ app.get('/api/tokens', async (_req, res) => {
 });
 
 
-app.post('/api/quote', async (req, res) => {
+app.post('/api/quote', quoteLimiter, async (req, res) => {
   try {
     const tokens = await getTokens();
     const input = validateQuoteBody(req.body, tokens);
@@ -340,15 +469,29 @@ app.post('/api/quote', async (req, res) => {
       deadline: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
       referral: 'xoduspay'
     };
-    const data = await oneClick('/quote', { method: 'POST', body: JSON.stringify(request) });
-    const inputUsd = Number(data?.quote?.amountInUsd);
-    if (!Number.isFinite(inputUsd) || inputUsd < 0.01) {
-      return res.status(400).json({ error: Number.isFinite(inputUsd)
+    // Check the authoritative USD estimate with a dry quote first. Only create
+    // a deposit address after the minimum has passed.
+    const dryData = await oneClick('/quote', {
+      method: 'POST', body: JSON.stringify({ ...request, dry: true })
+    });
+    const dryInputUsd = Number(dryData?.quote?.amountInUsd);
+    if (!Number.isFinite(dryInputUsd) || dryInputUsd < 0.01) {
+      return res.status(400).json({ error: Number.isFinite(dryInputUsd)
         ? 'Minimum payment amount is $0.01 USD equivalent.'
         : '1Click did not return a valid USD input estimate, so the $0.01 minimum cannot be verified. Please try again.' });
     }
-    if (req.body?.dry !== true && (!data?.quote?.depositAddress || !data?.quote?.amountIn)) {
-      return res.status(502).json({ error: '1Click returned an incomplete committed quote. No payment should be sent.' });
+    let data = dryData;
+    if (req.body?.dry !== true) {
+      data = await oneClick('/quote', {
+        method: 'POST', body: JSON.stringify({ ...request, dry: false })
+      });
+      const committedInputUsd = Number(data?.quote?.amountInUsd);
+      if (!Number.isFinite(committedInputUsd) || committedInputUsd < 0.01) {
+        return res.status(409).json({ error: 'The live quote moved below the $0.01 minimum before a deposit address could be issued. Please request a fresh quote.' });
+      }
+      if (!data?.quote?.depositAddress || !data?.quote?.amountIn) {
+        return res.status(502).json({ error: '1Click returned an incomplete committed quote. No payment should be sent.' });
+      }
     }
     res.json({ ...data, intentpay: { origin: input.origin, destination: input.destination } });
   } catch (error) {
@@ -377,7 +520,7 @@ const EVM_CHAIN_IDS = {
   aurora: 1313161554, bera: 80094, berachain: 80094
 };
 
-app.post('/api/lifi/quote', async (req, res) => {
+app.post('/api/lifi/quote', lifiQuoteLimiter, async (req, res) => {
   try {
     const { originAsset, destinationAsset, amount, user, recipient, fixedOutput = false } = req.body || {};
     if (!originAsset || !destinationAsset || !/^\d+$/.test(String(amount || '')) ||
@@ -465,7 +608,7 @@ app.get('/api/lifi/status', async (req, res) => {
 
 const transferLogInterface = new Interface(['event Transfer(address indexed from, address indexed to, uint256 value)']);
 
-app.post('/api/direct-payment/verify', async (req, res) => {
+app.post('/api/direct-payment/verify', paymentActionLimiter, async (req, res) => {
   const { txHash, chainId, assetId, sender, recipient, amount } = req.body || {};
   const config = EVM_CHAIN_CONFIG[Number(chainId)];
   if (!config || typeof txHash !== 'string' || !/^0x[a-fA-F0-9]{64}$/.test(txHash) ||
@@ -510,7 +653,7 @@ app.post('/api/direct-payment/verify', async (req, res) => {
   }
 });
 
-app.post('/api/deposit/submit', async (req, res) => {
+app.post('/api/deposit/submit', paymentActionLimiter, async (req, res) => {
   const { txHash, depositAddress, depositMemo, nearSenderAccount } = req.body || {};
   if (typeof txHash !== 'string' || txHash.length < 10 || txHash.length > 160 ||
       typeof depositAddress !== 'string' || depositAddress.length < 5 || depositAddress.length > 160) {
