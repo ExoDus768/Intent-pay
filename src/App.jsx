@@ -393,19 +393,25 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
   }
 
   function recordCurrentPayment(status, hash = txHash, paymentQuote = quote) {
-    if (!paymentQuote?.quote?.depositAddress || !origin || !destination || !customerAccount) return;
+    if (!paymentQuote?.quote || !origin || !destination || !customerAccount) return;
+    const isLifiPayment = paymentQuote.provider === 'lifi';
+    const paymentId = isLifiPayment
+      ? (hash ? 'lifi:' + String(hash).toLowerCase() : '')
+      : paymentQuote.quote.depositAddress;
+    if (!paymentId) return;
     saveCustomerHistory({
-      id: paymentQuote.quote.depositAddress,
+      id: paymentId,
       account: customerAccount,
       merchant: checkoutParams.get('merchantName') || 'Merchant payment',
       sourceNetwork: chainLabel(tokenChain(origin)),
       sourceToken: origin.symbol || 'TOKEN',
       destinationNetwork: chainLabel(tokenChain(destination)),
       destinationToken: destination.symbol || 'TOKEN',
-      amountPaid: paymentQuote.quote.amountInFormatted || formatUnits(paymentQuote.quote.amountIn, Number(origin.decimals || 0)),
-      amountReceived: paymentQuote.quote.amountOutFormatted || formatUnits(paymentQuote.quote.amountOut, Number(destination.decimals || 0)),
+      amountPaid: paymentQuote.quote.amountInFormatted || (paymentQuote.quote.amountIn != null ? formatUnits(paymentQuote.quote.amountIn, Number(origin.decimals || 0)) : ''),
+      amountReceived: paymentQuote.quote.amountOutFormatted || (paymentQuote.quote.amountOut != null ? formatUnits(paymentQuote.quote.amountOut, Number(destination.decimals || 0)) : ''),
       transactionHash: hash || '',
-      depositAddress: paymentQuote.quote.depositAddress,
+      depositAddress: paymentQuote.quote.depositAddress || '',
+      provider: isLifiPayment ? 'LI.FI' : 'NEAR Intents',
       status: status || 'PROCESSING',
       fixedAmount: Boolean(isFixedWidgetCheckout)
     });
