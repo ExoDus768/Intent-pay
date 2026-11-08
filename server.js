@@ -109,12 +109,13 @@ function validateQuoteBody(body, tokens) {
 
 
 function historySecret() {
-  if (!process.env.INTENTPAY_HISTORY_SECRET) {
+  const secret = process.env.XODUSPAY_HISTORY_SECRET || process.env.INTENTPAY_HISTORY_SECRET;
+  if (!secret) {
     const error = new Error('Wallet history authentication is not configured.');
     error.status = 503;
     throw error;
   }
-  return process.env.INTENTPAY_HISTORY_SECRET;
+  return secret;
 }
 function signHistoryPayload(payload) {
   const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
