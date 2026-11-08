@@ -3,6 +3,10 @@ import { BrowserProvider, Contract, Interface, formatUnits, isAddress, parseUnit
 import { actionCreators, setupWalletSelector } from '@near-wallet-selector/core';
 import { setupModal } from '@near-wallet-selector/modal-ui';
 import { setupMyNearWallet } from '@near-wallet-selector/my-near-wallet';
+import { setupNearMobileWallet } from '@near-wallet-selector/near-mobile-wallet';
+import { setupMeteorWallet } from '@near-wallet-selector/meteor-wallet';
+import { setupHotWallet } from '@near-wallet-selector/hot-wallet';
+import { setupSender } from '@near-wallet-selector/sender';
 import '@near-wallet-selector/modal-ui/styles.css';
 import { EthereumProvider } from '@walletconnect/ethereum-provider';
 import MerchantTools from './MerchantTools.jsx';
@@ -168,7 +172,17 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
     let active = true;
     (async () => {
       try {
-        const selector = await setupWalletSelector({ network: 'mainnet', modules: [setupMyNearWallet()] });
+        const selector = await setupWalletSelector({
+          network: 'mainnet',
+          optimizeWalletOrder: true,
+          modules: [
+            setupNearMobileWallet(),
+            setupMeteorWallet(),
+            setupHotWallet(),
+            setupSender(),
+            setupMyNearWallet()
+          ]
+        });
         const modal = setupModal(selector, { contractId: 'wrap.near' });
         if (!active) return;
         setNearSelector(selector);
