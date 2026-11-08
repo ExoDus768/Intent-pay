@@ -387,8 +387,8 @@ app.post('/api/lifi/quote', async (req, res) => {
     const origin = getToken(tokens, originAsset);
     const destination = getToken(tokens, destinationAsset);
     if (!origin || !destination) return res.status(400).json({ error: 'Selected token is not in the live token registry.' });
-    const originChainId = RELAY_CHAIN_IDS[String(origin.blockchain || '').toLowerCase()];
-    const destinationChainId = RELAY_CHAIN_IDS[String(destination.blockchain || '').toLowerCase()];
+    const originChainId = EVM_CHAIN_IDS[String(origin.blockchain || '').toLowerCase()];
+    const destinationChainId = EVM_CHAIN_IDS[String(destination.blockchain || '').toLowerCase()];
     if (!originChainId || !destinationChainId || !EVM_CHAIN_CONFIG[originChainId] || !EVM_CHAIN_CONFIG[destinationChainId]) {
       return res.status(400).json({ error: 'LI.FI fallback is limited to supported EVM-to-EVM routes. NEAR routes stay on NEAR Intents.' });
     }
