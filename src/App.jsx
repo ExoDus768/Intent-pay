@@ -464,8 +464,8 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
   const usdEstimate = amount && Number.isFinite(Number(amount)) && Number(amount) > 0
     ? (fixedOutputCheckout ? Number(amount) : (Number.isFinite(Number(origin?.price)) && Number(origin.price) > 0 ? Number(amount) * Number(origin.price) : null))
     : null;
-  const origins = useMemo(() => tokens.filter(t => CHAIN_IDS[tokenChain(t)] || (isNearToken(t) && (t.contractAddress || t.assetId === 'nep141:wrap.near'))), [tokens]);
-  const originChains = useMemo(() => [...new Set(origins.map(tokenChain))].sort((a, b) => chainLabel(a).localeCompare(chainLabel(b))), [origins]);
+  const origins = useMemo(() => tokens.filter(t => CHAIN_IDS[tokenChain(t)] || isNearToken(t)), [tokens]);
+  const originChains = useMemo(() => [...new Set([...origins.map(tokenChain), 'near'])].sort((a, b) => chainLabel(a).localeCompare(chainLabel(b))), [origins]);
   const originTokens = useMemo(() => origins.filter(t => tokenChain(t) === originChain).sort((a, b) => tokenPriority(a) - tokenPriority(b) || String(a.symbol || '').localeCompare(String(b.symbol || ''))), [origins, originChain]);
   const filteredOriginTokens = useMemo(() => origins
     .filter(t => !originSearch || (String(t.symbol || '') + ' ' + String(t.name || '') + ' ' + chainLabel(tokenChain(t))).toLowerCase().includes(originSearch.toLowerCase()))
@@ -489,7 +489,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
     return () => { cancelled = true; };
   }, [originChain, wallet, nearWallet, origins]);
   const destinations = useMemo(() => tokens, [tokens]);
-  const destinationChains = useMemo(() => [...new Set(destinations.map(tokenChain))].sort((a, b) => chainLabel(a).localeCompare(chainLabel(b))), [destinations]);
+  const destinationChains = useMemo(() => [...new Set([...destinations.map(tokenChain), 'near'])].sort((a, b) => chainLabel(a).localeCompare(chainLabel(b))), [destinations]);
   const destinationTokens = useMemo(() => destinations.filter(t => tokenChain(t) === destinationChain).sort((a, b) => tokenPriority(a) - tokenPriority(b) || String(a.symbol || '').localeCompare(String(b.symbol || ''))), [destinations, destinationChain]);
   useEffect(() => {
     let cancelled = false;
