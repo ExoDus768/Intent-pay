@@ -174,6 +174,36 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
     return () => window.removeEventListener('eip6963:announceProvider', announce);
   }, []);
 
+
+  // Restore an already-authorized EVM account silently; never trigger a wallet login prompt.
+  useEffect(() => {
+    let cancelled = false;
+    const restore = async () => {
+      await new Promise(resolve => setTimeout(resolve, 500));
+      if (cancelled || wallet || nearWallet) return;
+      const injected = window.ethereum;
+      const providers = [
+        ...evmProvidersRef.current.map(item => item.provider),
+        ...(Array.isArray(injected?.providers) ? injected.providers : []),
+        ...(injected ? [injected] : [])
+      ].filter((provider, index, all) => provider?.request && all.indexOf(provider) === index);
+      for (const provider of providers) {
+        try {
+          const accounts = await provider.request({ method: 'eth_accounts' });
+          if (!cancelled && Array.isArray(accounts) && accounts[0]) {
+            activeEvmProviderRef.current = provider;
+            setWallet(accounts[0]);
+            setWalletFeedback('Previously connected wallet restored.');
+            setNotice('Your connected EVM wallet was restored. Choose your payment asset without signing in again.');
+            return;
+          }
+        } catch {}
+      }
+    };
+    restore();
+    return () => { cancelled = true; };
+  }, [wallet, nearWallet]);
+
   useEffect(() => {
     try {
       const saved = sessionStorage.getItem('intentpay_pending_near');
@@ -255,6 +285,10 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
       setHistoryAuth({ account: '', token: '', status: 'idle', error: '' });
       return undefined;
     }
+    if (!historySyncRequested) {
+      setHistoryAuth({ account: customerAccount, token: '', status: 'idle', error: '' });
+      return undefined;
+    }
     const account = customerAccount;
     const chain = isNearToken(origin || {}) ? 'near' : 'evm';
     setHistoryAuth({ account, token: '', status: 'signing', error: '' });
@@ -301,9 +335,9 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
         method: 'PUT', headers: { ...authHeaders, 'Content-Type': 'application/json' },
         body: JSON.stringify({ entries: merged })
       });
-      if (!cancelled) setHistoryAuth({ account, token: verified.token, status: 'ready', error: '' });
+      if (!cancelled) { setHistoryAuth({ account, token: verified.token, status: 'ready', error: '' }); setHistorySyncRequested(false); }
     })().catch(error => {
-      if (!cancelled) setHistoryAuth({ account, token: '', status: 'error', error: error?.message || 'Wallet history sync failed.' });
+      if (!cancelled) { setHistoryAuth({ account, token: '', status: 'error', error: error?.message || 'Wallet history sync failed.' }); setHistorySyncRequested(false); }
     });
     return () => { cancelled = true; };
   }, [customerAccount, nearSelector, origin, historySyncRequested]);
@@ -1233,13 +1267,13 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
     </section>
     {checkoutOnly && <section className="customer-history">
       <div className="customer-history-head"><div><div className="eyebrow">YOUR ACTIVITY</div><h2>Transaction history</h2><p>Payments made by this wallet. Sign with the wallet to sync across devices.</p></div><span className="history-count">{customerHistory.length} {customerHistory.length === 1 ? 'payment' : 'payments'}</span></div>
-      {!customerAccount ? <p className="history-empty">Connect the wallet you used to pay to view its transaction history.</p> : historyAuth.status === 'signing' ? <p className="history-empty">Sign the wallet message to securely load your synced history…</p> : historyAuth.status === 'error' ? <p className="history-empty">History sync needs wallet verification: {historyAuth.error}</p> : customerHistory.length === 0 ? <p className="history-empty">No payments recorded for this wallet yet.</p> : <div className="history-list">{customerHistory.map(item => <article className="history-item" key={item.id}>
+      {!customerAccount ? <p className="history-empty">Connect the wallet you used to pay to view its transaction history.</p> : <><button type="button" className="secondary" onClick={() => setHistorySyncRequested(true)} disabled={historyAuth.status === 'signing'}>{historyAuth.status === 'signing' ? 'Verifying wallet…' : historyAuth.status === 'ready' ? 'History synced' : 'Sign once to sync across devices'}</button>{historyAuth.status === 'error' && <p className="history-empty">History sync needs verification: {historyAuth.error}</p>}{customerHistory.length === 0 ? <p className="history-empty">No payments recorded for this wallet yet.</p> : <div className="history-list">{customerHistory.map(item => <article className="history-item" key={item.id}>
         <div className="history-item-top"><strong>{item.merchant || 'Merchant payment'}</strong><span className={'history-status status-' + String(item.status || 'processing').toLowerCase()}>{String(item.status || 'PROCESSING').replaceAll('_', ' ')}</span></div>
         <div className="history-amount">{item.amountPaid || '—'} {item.sourceToken || ''}<span>→</span>{item.amountReceived || '—'} {item.destinationToken || ''}</div>
         <div className="history-route">{item.sourceNetwork || 'Source'} → {item.destinationNetwork || 'Destination'}</div>
         {item.transactionHash && <div className="history-hash">Transaction: <code>{short(item.transactionHash)}</code></div>}
         <div className="history-date">{new Date(item.createdAt || item.updatedAt || Date.now()).toLocaleString()}</div>
-      </article>)}</div>}
+      </article>)}</div>}</>}
       <p className="history-disclaimer">Your history is tied to your wallet and stored in private cloud storage. Connect the same wallet and sign the verification message on another device to see the same records.</p>
     </section>}
     <footer><span>XoDuspay</span><span>{checkoutOnly ? 'Secure checkout powered by NEAR Intents' : 'Universal crypto checkout powered by NEAR Intents'}</span></footer>
