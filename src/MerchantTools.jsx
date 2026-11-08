@@ -67,7 +67,7 @@ export default function MerchantTools({ open = false, onClose = () => {}, tokens
     <div className={page ? "merchant-page-wrapper" : "merchant-overlay"} role="presentation" onMouseDown={event => { if (!page && event.target === event.currentTarget) onClose(); }}>
       <section className={page ? "merchant-modal merchant-page-card" : "merchant-modal"} role="dialog" aria-modal="true" aria-labelledby="merchant-title">
         <div className="merchant-modal-head">
-          <div><div className="eyebrow">INTENTPAY · UNIVERSAL CHECKOUT</div><h2 id="merchant-title">{page ? 'Merchant workspace' : 'Checkout workspace'}</h2></div>
+          <div><div className="eyebrow">XODUSPAY · UNIVERSAL CHECKOUT</div><h2 id="merchant-title">{page ? 'Merchant workspace' : 'Checkout workspace'}</h2></div>
           <button type="button" className="merchant-close" aria-label={page ? "Return home" : "Close checkout workspace"} onClick={onClose}>{page ? '←' : '×'}</button>
         </div>
         <div className="merchant-widget-panel">
@@ -93,7 +93,7 @@ export default function MerchantTools({ open = false, onClose = () => {}, tokens
               <small>Set a dollar price for checkout</small>
             </button>
           </div>
-          {mode === 'fixed' && <><label htmlFor="intentpay-fixed-amount">Fixed price (USD)</label><div className="widget-usd-input"><span>$</span><input id="intentpay-fixed-amount" type="number" min="0.01" step="0.01" value={fixedAmount} onChange={e => setFixedAmount(e.target.value)} placeholder="e.g. 25.00" /></div><p className="merchant-hint">Set the price in US dollars. IntentPay converts it to the merchant payout token at the current listed USD price.</p></>}
+          {mode === 'fixed' && <><label htmlFor="intentpay-fixed-amount">Fixed price (USD)</label><div className="widget-usd-input"><span>$</span><input id="intentpay-fixed-amount" type="number" min="0.01" step="0.01" value={fixedAmount} onChange={e => setFixedAmount(e.target.value)} placeholder="e.g. 25.00" /></div><p className="merchant-hint">Set the price in US dollars. XoDuspay converts it to the merchant payout token at the current listed USD price.</p></>}
 
           <div className="section-rule"><span>MERCHANT RECEIVES</span></div>
           <label htmlFor="intentpay-payout-chain">Payout network</label>
@@ -133,12 +133,12 @@ export default function MerchantTools({ open = false, onClose = () => {}, tokens
                 <strong>Scan to pay</strong>
                 <p>Customers can scan this QR code with their phone camera to open this exact checkout.</p>
               </div>
-              {qrDataUrl ? <img className="widget-qr-image" src={qrDataUrl} alt="QR code for this IntentPay checkout link" /> : <div className="widget-qr-placeholder">{qrError || 'Generating QR code…'}</div>}
-              {qrDataUrl && <a className="widget-qr-download" href={qrDataUrl} download="intentpay-checkout-qr.png">Download QR code</a>}
+              {qrDataUrl ? <img className="widget-qr-image" src={qrDataUrl} alt="QR code for this XoDuspay checkout link" /> : <div className="widget-qr-placeholder">{qrError || 'Generating QR code…'}</div>}
+              {qrDataUrl && <a className="widget-qr-download" href={qrDataUrl} download="xoduspay-checkout-qr.png">Download QR code</a>}
             </div>
           </>}
           {!ready && <p className="widget-setup-hint">Choose a payout network and token, enter your receiving wallet address, and complete the amount settings to generate your widget.</p>}
-          <p className="merchant-hint">The button opens IntentPay's hosted mainnet checkout. Customers connect their own wallet, review the live NEAR Intents quote and network fee, then approve the payment. Your receiving address and payout asset are included in the public checkout link.</p>
+          <p className="merchant-hint">The button opens XoDuspay's hosted mainnet checkout. Customers connect their own wallet, review the live NEAR Intents quote and network fee, then approve the payment. Your receiving address and payout asset are included in the public checkout link.</p>
           {error && <p className="merchant-error">{error}</p>}
           {notice && <p className="merchant-notice">{notice}</p>}
         </div>
