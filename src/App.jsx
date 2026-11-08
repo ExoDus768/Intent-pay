@@ -103,6 +103,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
   const [balanceError, setBalanceError] = useState('');
   const [recipient, setRecipient] = useState(merchantRecipientParam);
   const [quote, setQuote] = useState(null);
+  const [quoteClock, setQuoteClock] = useState(Date.now());
   const [gasEstimate, setGasEstimate] = useState(null);
   const [txHash, setTxHash] = useState('');
   const [paymentStatus, setSwapStatus] = useState('');
@@ -111,6 +112,23 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('Connect your EVM or NEAR mainnet wallet, choose the asset you will pay with, and set the merchant payout details.');
   const quoteRequestRef = useRef(0);
+
+  // Update the displayed countdown against the provider-issued expiry deadline.
+  useEffect(() => {
+    if (!quote?.quote?.deadline) return undefined;
+    const tick = () => setQuoteClock(Date.now());
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [quote?.quote?.deadline]);
+
+  const quoteSecondsRemaining = quote?.quote?.deadline
+    ? Math.max(0, Math.ceil((Date.parse(quote.quote.deadline) - quoteClock) / 1000))
+    : null;
+  const quoteExpired = quoteSecondsRemaining === 0;
+  const quoteCountdownLabel = quoteSecondsRemaining === null
+    ? 'Provider-defined'
+    : `${Math.floor(quoteSecondsRemaining / 60)}:${String(quoteSecondsRemaining % 60).padStart(2, '0')}`;
   const evmProvidersRef = useRef([]);
   const activeEvmProviderRef = useRef(null);
   const walletConnectProviderRef = useRef(null);
@@ -1012,16 +1030,16 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
         <p className="helper-text">NEAR Intents calculates the conversion and delivery amount shown in this quote. Network gas is separate and paid to the source blockchain.</p>
         {quote.quote.minAmountIn && <div className="quote-row"><span>Minimum input</span><strong>{formatUnits(quote.quote.minAmountIn, Number(origin?.decimals || 0))} {origin?.symbol}</strong></div>}
         {quote.quote.maxAmountIn && <div className="quote-row"><span>Maximum input</span><strong>{formatUnits(quote.quote.maxAmountIn, Number(origin?.decimals || 0))} {origin?.symbol}</strong></div>}
-        <div className="quote-row"><span>Estimated time</span><strong>{quote.quote.timeEstimate ? Math.ceil(quote.quote.timeEstimate / 60) + ' min' : 'Provider estimate unavailable'}</strong></div><div className="quote-row"><span>Quote expires</span><strong>{quote.quote.deadline ? new Date(quote.quote.deadline).toLocaleTimeString() : 'Provider-defined'}</strong></div>
+        <div className="quote-row"><span>Estimated time</span><strong>{quote.quote.timeEstimate ? Math.ceil(quote.quote.timeEstimate / 60) + ' min' : 'Provider estimate unavailable'}</strong></div><div className="quote-row quote-countdown-row"><span>Quote expires in</span><strong className={quoteExpired ? 'quote-countdown expired' : 'quote-countdown'}>{quoteCountdownLabel}{quoteExpired ? ' · Expired' : quoteSecondsRemaining !== null ? ' remaining' : ''}</strong></div>
         {quote.quote.depositAddress ? <div className="deposit-address"><span>Unique deposit address</span><code>{quote.quote.depositAddress}</code></div> : <p className="helper-text">Payment address is created securely when you tap Confirm Pay.</p>}
         {quote.quote.depositMemo && <div className="deposit-address"><span>Required memo</span><code>{quote.quote.depositMemo}</code></div>}
         {txHash && <div className="tx-details"><span>Deposit transaction</span><code>{short(txHash)}</code><span>Status: {paymentStatus || 'Waiting'}</span></div>}
         {txHash && <button className="secondary" onClick={refreshStatus} disabled={busy}>Refresh payment status</button>}
         <p className="fineprint">MAINNET TRANSACTION · This approval transfers real assets. Verify the wallet network, token, amount, merchant address, quote expiry, and deposit address before signing. Never send a different asset to this address.</p>
       </div>}
-      {quote?.quote && <button type="button" className="primary" onClick={sendDeposit} disabled={busy || Boolean(txHash)}>
-        {busy ? 'Processing payment…' : txHash ? 'Payment submitted' : 'Confirm Pay'}
-      </button>}
+      {quote?.quote && <>{quoteExpired && <p className="warning" role="alert">This quote has expired. Request a fresh quote before making payment.</p>}<button type="button" className="primary" onClick={quoteExpired ? createQuote : sendDeposit} disabled={busy || Boolean(txHash)}>
+        {busy ? 'Processing payment…' : txHash ? 'Payment submitted' : quoteExpired ? 'Refresh quote' : 'Confirm Pay'}
+      </button></>}
     </section>
     {checkoutOnly && <section className="customer-history">
       <div className="customer-history-head"><div><div className="eyebrow">YOUR ACTIVITY</div><h2>Transaction history</h2><p>Payments made by this wallet. Sign with the wallet to sync across devices.</p></div><span className="history-count">{customerHistory.length} {customerHistory.length === 1 ? 'payment' : 'payments'}</span></div>
