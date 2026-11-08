@@ -506,7 +506,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
           }
         } else {
           const providerObject = activeEvmProviderRef.current || window.ethereum;
-          if (!providerObject) throw new Error('Open IntentPay inside your EVM wallet browser to read the balance.');
+          if (!providerObject) throw new Error('Open XoDuspay inside your EVM wallet browser to read the balance.');
           const provider = new BrowserProvider(providerObject);
           const network = await provider.getNetwork();
           const expectedChain = CHAIN_IDS[tokenChain(origin)];
@@ -569,7 +569,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
     } catch (error) {
       const message = error?.message || 'Unknown error';
       setWalletFeedback('Meteor app connection failed: ' + message);
-      setNotice('Meteor app connection failed: ' + message + '. Keep IntentPay open inside Meteor and try again.');
+      setNotice('Meteor app connection failed: ' + message + '. Keep XoDuspay open inside Meteor and try again.');
     } finally {
       setWalletAction('');
     }
@@ -606,7 +606,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
       ];
       const detectedNames = candidates.map(providerName);
       if (!candidates.length) {
-        throw new Error('No EVM wallet was detected in this browser. Open IntentPay inside a wallet app or use WalletConnect.');
+        throw new Error('No EVM wallet was detected in this browser. Open XoDuspay inside a wallet app or use WalletConnect.');
       }
       let connected = false;
       let lastError = null;
@@ -661,7 +661,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
           optionalChains: [1, 8453, 42161, 10, 137, 56, 43114, 100, 80094, 534352, 1313161554],
           showQrModal: true,
           metadata: {
-            name: 'IntentPay',
+            name: 'XoDuspay',
             description: 'Universal crypto checkout powered by NEAR Intents',
             url: window.location.origin,
             icons: [window.location.origin + '/favicon.ico']
@@ -687,7 +687,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
 
   function notifyPaymentSuccess() {
     if ('Notification' in window && Notification.permission === 'granted') {
-      new Notification('IntentPay payment complete', { body: 'NEAR Intents confirmed that the merchant payout was delivered.' });
+      new Notification('XoDuspay payment complete', { body: 'NEAR Intents confirmed that the merchant payout was delivered.' });
     }
   }
 
@@ -1012,7 +1012,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
         recordCurrentPayment(statusData.status || 'UNKNOWN', tx.hash, activeQuote);
         if (TERMINAL.has(statusData.status)) {
           if (statusData.status === 'SUCCESS') { notifyPaymentSuccess();
-            setNotice('Payment completed. 1Click reports that the merchant payout was delivered.'); if ('Notification' in window && Notification.permission === 'granted') new Notification('IntentPay payment complete', { body: 'The merchant payout has been confirmed by NEAR Intents.' }); }
+            setNotice('Payment completed. 1Click reports that the merchant payout was delivered.'); if ('Notification' in window && Notification.permission === 'granted') new Notification('XoDuspay payment complete', { body: 'The merchant payout has been confirmed by NEAR Intents.' }); }
           else setNotice(`Payment ended with status: ${statusData.status}. Review the provider response before taking further action.`);
           setBusy(false);
           return;
@@ -1043,12 +1043,12 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
   }
 
   if (merchantOnly) return <main className="shell merchant-page-shell">
-    <header className="merchant-page-nav"><a className="brand" href="/"><span className="brand-mark">I</span> IntentPay</a></header>
+    <header className="merchant-page-nav"><a className="brand" href="/"><span className="brand-mark">X</span> XoDuspay</a></header>
     <MerchantTools tokens={tokens} open page onClose={() => { window.location.href = '/'; }} />
   </main>;
 
   return <main className={checkoutOnly ? "shell customer-checkout-shell" : "shell"}>
-    <nav className={checkoutOnly ? "nav customer-nav" : "nav"}><div className="site-menu-wrap" ref={siteMenuWrapRef}><button type="button" className="hamburger-btn" aria-label="Open navigation menu" aria-expanded={siteMenuOpen} onClick={() => setSiteMenuOpen(open => !open)}><span></span><span></span><span></span></button>{siteMenuOpen && <div className="site-menu"><button type="button" className="site-menu-primary" onClick={() => { setSiteMenuOpen(false); setMerchantWorkspaceOpen(true); }}><span><b>01</b> Merchant workspace</span><span>↗</span></button><a href="#how-it-works" onClick={() => setSiteMenuOpen(false)}>How it works</a><a href="#checkout" onClick={() => setSiteMenuOpen(false)}>Supported networks</a><a href="https://github.com/ExoDus768/Intent-pay#readme" target="_blank" rel="noreferrer" onClick={() => setSiteMenuOpen(false)}>Documentation <span>↗</span></a><a href="https://github.com/ExoDus768/Intent-pay" target="_blank" rel="noreferrer" onClick={() => setSiteMenuOpen(false)}>GitHub repository <span>↗</span></a><div className="follow-menu-wrap" ref={followMenuWrapRef}><button type="button" className="follow-menu-trigger" aria-expanded={followMenuOpen} aria-haspopup="true" onClick={() => setFollowMenuOpen(open => !open)}>Follow Us <span>{followMenuOpen ? '⌃' : '›'}</span></button>{followMenuOpen && <div className="follow-submenu"><div className="follow-submenu-title">Follow IntentPay</div><a className="follow-link-placeholder" href="https://x.com/Intent_Payy" target="_blank" rel="noreferrer"><strong>Follow IntentPay on X</strong><small>@Intent_Payy ↗</small></a></div>}</div></div>}</div><a className="brand" href="#"><span className="brand-mark">I</span> IntentPay</a><div className="nav-right"><span className="status"><i />{health}</span><div className="wallet-menu-wrap" ref={walletMenuWrapRef}><button type="button" className="wallet-btn" onClick={() => setWalletMenuOpen(open => !open)} disabled={!!walletAction}>{walletAction === 'evm' ? 'Connecting EVM…' : walletAction === 'near' ? 'Opening NEAR…' : walletAction === 'walletconnect' ? 'Connecting…' : wallet || nearWallet ? short(wallet || nearWallet) : 'Connect Wallet'} <span aria-hidden="true">⌄</span></button>{walletMenuOpen && <div className="wallet-menu"><button type="button" onClick={() => { setWalletFeedback('Starting EVM connection…'); connectWallet(); }} disabled={walletAction === 'evm'}><strong>EVM Wallet</strong><small>MetaMask, Zerion and other EVM wallets</small>{wallet && <small>Connected: {short(wallet)}</small>}</button><button type="button" onClick={() => { setWalletFeedback('Starting NEAR connection…'); connectNearWallet(); }} disabled={walletAction === 'near'}><strong>NEAR Wallet</strong><small>MyNearWallet and supported NEAR wallets</small>{nearWallet && <small>Connected: {short(nearWallet)}</small>}</button><button type="button" onClick={connectMeteorWalletApp} disabled={walletAction === 'meteor-app'}><strong>Meteor Wallet App</strong><small>Connect directly inside Meteor’s in-app browser</small>{nearWallet && <small>Connected: {short(nearWallet)}</small>}</button><button type="button" onClick={() => { setWalletFeedback('Starting WalletConnect…'); connectWalletConnect(); }} disabled={walletAction === 'walletconnect'}><strong>WalletConnect</strong><small>Scan a QR code or open a compatible mobile wallet</small></button><div className="wallet-menu-feedback" role="status" aria-live="polite">{walletFeedback}</div></div>}</div></div></nav>
+    <nav className={checkoutOnly ? "nav customer-nav" : "nav"}><div className="site-menu-wrap" ref={siteMenuWrapRef}><button type="button" className="hamburger-btn" aria-label="Open navigation menu" aria-expanded={siteMenuOpen} onClick={() => setSiteMenuOpen(open => !open)}><span></span><span></span><span></span></button>{siteMenuOpen && <div className="site-menu"><button type="button" className="site-menu-primary" onClick={() => { setSiteMenuOpen(false); setMerchantWorkspaceOpen(true); }}><span><b>01</b> Merchant workspace</span><span>↗</span></button><a href="#how-it-works" onClick={() => setSiteMenuOpen(false)}>How it works</a><a href="#checkout" onClick={() => setSiteMenuOpen(false)}>Supported networks</a><a href="https://github.com/ExoDus768/Intent-pay#readme" target="_blank" rel="noreferrer" onClick={() => setSiteMenuOpen(false)}>Documentation <span>↗</span></a><a href="https://github.com/ExoDus768/Intent-pay" target="_blank" rel="noreferrer" onClick={() => setSiteMenuOpen(false)}>GitHub repository <span>↗</span></a><div className="follow-menu-wrap" ref={followMenuWrapRef}><button type="button" className="follow-menu-trigger" aria-expanded={followMenuOpen} aria-haspopup="true" onClick={() => setFollowMenuOpen(open => !open)}>Follow Us <span>{followMenuOpen ? '⌃' : '›'}</span></button>{followMenuOpen && <div className="follow-submenu"><div className="follow-submenu-title">Follow XoDuspay</div><a className="follow-link-placeholder" href="https://x.com/Intent_Payy" target="_blank" rel="noreferrer"><strong>Follow XoDuspay on X</strong><small>@Intent_Payy ↗</small></a></div>}</div></div>}</div><a className="brand" href="#"><span className="brand-mark">X</span> XoDuspay</a><div className="nav-right"><span className="status"><i />{health}</span><div className="wallet-menu-wrap" ref={walletMenuWrapRef}><button type="button" className="wallet-btn" onClick={() => setWalletMenuOpen(open => !open)} disabled={!!walletAction}>{walletAction === 'evm' ? 'Connecting EVM…' : walletAction === 'near' ? 'Opening NEAR…' : walletAction === 'walletconnect' ? 'Connecting…' : wallet || nearWallet ? short(wallet || nearWallet) : 'Connect Wallet'} <span aria-hidden="true">⌄</span></button>{walletMenuOpen && <div className="wallet-menu"><button type="button" onClick={() => { setWalletFeedback('Starting EVM connection…'); connectWallet(); }} disabled={walletAction === 'evm'}><strong>EVM Wallet</strong><small>MetaMask, Zerion and other EVM wallets</small>{wallet && <small>Connected: {short(wallet)}</small>}</button><button type="button" onClick={() => { setWalletFeedback('Starting NEAR connection…'); connectNearWallet(); }} disabled={walletAction === 'near'}><strong>NEAR Wallet</strong><small>MyNearWallet and supported NEAR wallets</small>{nearWallet && <small>Connected: {short(nearWallet)}</small>}</button><button type="button" onClick={connectMeteorWalletApp} disabled={walletAction === 'meteor-app'}><strong>Meteor Wallet App</strong><small>Connect directly inside Meteor’s in-app browser</small>{nearWallet && <small>Connected: {short(nearWallet)}</small>}</button><button type="button" onClick={() => { setWalletFeedback('Starting WalletConnect…'); connectWalletConnect(); }} disabled={walletAction === 'walletconnect'}><strong>WalletConnect</strong><small>Scan a QR code or open a compatible mobile wallet</small></button><div className="wallet-menu-feedback" role="status" aria-live="polite">{walletFeedback}</div></div>}</div></div></nav>
     {!checkoutOnly && <MerchantTools tokens={tokens} defaultRecipient={wallet || nearWallet} open={merchantWorkspaceOpen} onClose={() => setMerchantWorkspaceOpen(false)} />}
     {!checkoutOnly && <section className="hero" id="how-it-works"><div className="eyebrow">UNIVERSAL CHECKOUT · POWERED BY NEAR INTENTS</div><h1>One checkout.<br/><span>Crypto payments, simplified.</span></h1><p>Merchants configure one reusable checkout. Customers pay with a supported wallet and asset while the merchant receives their chosen payout token.</p></section>}
     <section className="checkout" id="checkout">{isWidgetCheckout && <div className="checkout-banner"><span className="eyebrow">{checkoutOnly ? 'MERCHANT PAYMENT' : 'PAYMENT REQUEST'}</span><strong>{isFixedWidgetCheckout ? merchantAmountParam + ' ' + (destination?.symbol || '') : 'Variable amount'}</strong><p>{checkoutParams.get('merchantName') || 'Merchant payment'} · {fixedOutputCheckout ? 'Exact payout amount delivered through NEAR Intents.' : 'Customer chooses the amount.'}</p></div>}
@@ -1060,7 +1060,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
           {originChains.map(chain => <option key={chain} value={chain}>{chainLabel(chain)}</option>)}
         </select>
         <label>Customer pays with</label>
-        <p className="helper-text">Choose your network first. IntentPay checks your connected wallet and highlights tokens with a balance on that network.</p>
+        <p className="helper-text">Choose your network first. XoDuspay checks your connected wallet and highlights tokens with a balance on that network.</p>
         <input
           type="search"
           value={originSearch}
@@ -1087,7 +1087,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
         {originChain && walletTokenScan.complete && <p className="helper-text">{walletDetectedOriginTokens.filter(t => tokenChain(t) === originChain).length} supported token(s) detected in your wallet on {chainLabel(originChain)}. You can still select another supported token if needed.</p>}
         {originSearch && filteredOriginTokens.filter(t => tokenChain(t) === originChain).length === 0 && <p className="warning">No supported token matches “{originSearch}” on this network.</p>}
         {origin && <p className="helper-text">Selected: <strong>{origin.symbol} on {chainLabel(tokenChain(origin))}</strong>{Number(origin.price) > 0 ? <> · 1 {origin.symbol} ≈ ${Number(origin.price).toLocaleString(undefined, { maximumFractionDigits: 6 })} USD</> : ' · Live USD price unavailable'}</p>}
-        <label>{fixedOutputCheckout ? 'Fixed checkout price (USD)' : 'Amount to pay'}</label><input type="number" min="0" step="any" value={amount} onChange={e => setAmount(e.target.value)} placeholder={fixedOutputCheckout ? 'e.g. 25.00 USD' : '0.00'} required readOnly={Boolean(isFixedWidgetCheckout)} /><p className="helper-text">{fixedOutputCheckout ? <>This checkout is fixed at <strong>${Number(amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD</strong>. IntentPay converts that value into the merchant's payout token and quotes the amount you need to pay in your selected wallet token.</> : usdEstimate !== null ? <>Estimated value: <strong>~ ${usdEstimate.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 4 })}</strong></> : amount && origin ? 'USD estimate unavailable for this token right now.' : 'Enter an amount to see its approximate USD value.'}</p><p className="helper-text">Minimum payment: $0.01 USD equivalent, checked using live 1Click pricing.</p>{origin && !fixedOutputCheckout && <><p className="balance-line">{balanceLoading ? 'Checking wallet balance…' : originBalance !== '' ? <>Wallet balance: <strong>{Number(originBalance).toLocaleString(undefined, { maximumFractionDigits: 8 })} {origin.symbol}</strong></> : balanceError}</p><div className="percentage-row" aria-label="Select percentage of wallet balance">{[25, 50, 75, 100].map(percent => <button key={percent} type="button" className="percentage-btn" disabled={balanceLoading || originBalance === ''} onClick={() => { try { const units = parseUnits(originBalance, Number(origin.decimals || 0)); setAmount(formatUnits(units * BigInt(percent) / 100n, Number(origin.decimals || 0))); } catch { setNotice('Could not calculate this percentage. Check the selected asset balance.'); } }}>{percent === 100 ? 'MAX' : percent + '%'}</button>)}</div></>}
+        <label>{fixedOutputCheckout ? 'Fixed checkout price (USD)' : 'Amount to pay'}</label><input type="number" min="0" step="any" value={amount} onChange={e => setAmount(e.target.value)} placeholder={fixedOutputCheckout ? 'e.g. 25.00 USD' : '0.00'} required readOnly={Boolean(isFixedWidgetCheckout)} /><p className="helper-text">{fixedOutputCheckout ? <>This checkout is fixed at <strong>${Number(amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD</strong>. XoDuspay converts that value into the merchant's payout token and quotes the amount you need to pay in your selected wallet token.</> : usdEstimate !== null ? <>Estimated value: <strong>~ ${usdEstimate.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 4 })}</strong></> : amount && origin ? 'USD estimate unavailable for this token right now.' : 'Enter an amount to see its approximate USD value.'}</p><p className="helper-text">Minimum payment: $0.01 USD equivalent, checked using live 1Click pricing.</p>{origin && !fixedOutputCheckout && <><p className="balance-line">{balanceLoading ? 'Checking wallet balance…' : originBalance !== '' ? <>Wallet balance: <strong>{Number(originBalance).toLocaleString(undefined, { maximumFractionDigits: 8 })} {origin.symbol}</strong></> : balanceError}</p><div className="percentage-row" aria-label="Select percentage of wallet balance">{[25, 50, 75, 100].map(percent => <button key={percent} type="button" className="percentage-btn" disabled={balanceLoading || originBalance === ''} onClick={() => { try { const units = parseUnits(originBalance, Number(origin.decimals || 0)); setAmount(formatUnits(units * BigInt(percent) / 100n, Number(origin.decimals || 0))); } catch { setNotice('Could not calculate this percentage. Check the selected asset balance.'); } }}>{percent === 100 ? 'MAX' : percent + '%'}</button>)}</div></>}
         <div className="section-rule"><span>MERCHANT RECEIVES</span></div>
         <label>Choose payout network</label>
         <select value={destinationChain} onChange={e => { setDestinationChain(e.target.value); setDestinationAsset(''); }} required disabled={Boolean(isWidgetCheckout)}>
@@ -1142,6 +1142,6 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
       </article>)}</div>}
       <p className="history-disclaimer">Your history is tied to your wallet and stored in private cloud storage. Connect the same wallet and sign the verification message on another device to see the same records.</p>
     </section>}
-    <footer><span>IntentPay</span><span>{checkoutOnly ? 'Secure checkout powered by NEAR Intents' : 'Universal crypto checkout powered by NEAR Intents'}</span></footer>
+    <footer><span>XoDuspay</span><span>{checkoutOnly ? 'Secure checkout powered by NEAR Intents' : 'Universal crypto checkout powered by NEAR Intents'}</span></footer>
   </main>;
 }
