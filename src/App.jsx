@@ -710,13 +710,31 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
   const destinationIsSolana = destinationChain === 'solana';
   const recipientPlaceholder = destinationIsNear ? 'e.g. merchant.near' : destinationIsSolana ? 'Solana wallet address' : 'e.g. 0xAbC123...7890';
 
+  function getSolanaInjectedProvider() {
+    const candidates = [
+      window.jupiter?.solana,
+      window.jupiter,
+      window.phantom?.solana,
+      window.solflare,
+      window.backpack?.solana,
+      window.coinbaseSolana,
+      window.trustwallet?.solana,
+      window.braveSolana,
+      window.solana
+    ];
+    return candidates.find(provider =>
+      provider && typeof provider.connect === 'function' &&
+      (typeof provider.signAndSendTransaction === 'function' || typeof provider.signTransaction === 'function')
+    ) || null;
+  }
+
   async function connectSolanaWallet() {
     setWalletAction('solana');
     setWalletFeedback('Connecting to a Solana wallet…');
     try {
-      const provider = window.phantom?.solana || window.solana;
+      const provider = getSolanaInjectedProvider();
       if (!provider || typeof provider.connect !== 'function') {
-        throw new Error('No compatible Solana wallet was detected. Open XoDuspay in Phantom or another wallet that injects a Solana provider.');
+        throw new Error('No Solana wallet provider is exposed in this browser. Jupiter, Phantom, Solflare and other injected Solana providers are checked; if your wallet uses Mobile Wallet Adapter instead, this browser needs the mobile-adapter connection flow.');
       }
       const response = await provider.connect();
       const address = response?.publicKey?.toString?.() || provider.publicKey?.toString?.();
@@ -1037,7 +1055,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
     }
     const chainKey = tokenChain(origin);
     if (chainKey === 'solana') {
-      const provider = activeSolProviderRef.current || window.phantom?.solana || window.solana;
+      const provider = activeSolProviderRef.current || getSolanaInjectedProvider();
       if (!provider || !solWallet) return setNotice('Connect your Solana wallet before sending this deposit.');
       setBusy(true);
       try {
@@ -1072,7 +1090,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
         transaction.feePayer = owner;
         transaction.recentBlockhash = latest.blockhash;
         setNotice('Solana transfer prepared. Review the asset, amount, recipient deposit account and network fee in your wallet.');
-        const signature = await provider.signAndSendTransaction(transaction, connection, { skipPreflight: false, preflightCommitment: 'confirmed' });
+        const signature = typeof provider.signAndSendTransaction === 'function'\n          ? await provider.signAndSendTransaction(transaction, connection, { skipPreflight: false, preflightCommitment: 'confirmed' })\n          : await (async () => { const signed = await provider.signTransaction(transaction); return await connection.sendRawTransaction(signed.serialize(), { skipPreflight: false, preflightCommitment: 'confirmed' }); })();
         const hash = typeof signature === 'string' ? signature : signature?.signature;
         if (!hash || hash.length < 32) throw new Error('The Solana wallet did not return a valid transaction signature.');
         setTxHash(hash);
