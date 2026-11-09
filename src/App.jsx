@@ -614,7 +614,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
     'mantle', 'mode', 'blast', 'celo', 'worldchain'
   ]);
   const destinationChains = useMemo(() => [...new Set(destinations.map(tokenChain).filter(chain => supportedPayoutChains.has(chain)))].sort((a, b) => chainLabel(a).localeCompare(chainLabel(b))), [destinations]);
-  const destinationTokens = useMemo(() => destinations.filter(t => tokenChain(t) === destinationChain && (destinationChain !== 'near' || String(t.symbol || '').toUpperCase() !== 'NEAR')).sort((a, b) => tokenPriority(a) - tokenPriority(b) || String(a.symbol || '').localeCompare(String(b.symbol || ''))), [destinations, destinationChain]);
+  const destinationTokens = useMemo(() => destinations.filter(t => tokenChain(t) === destinationChain && (destinationChain !== 'near' || String(t.assetId || '').toLowerCase() === 'nep141:wrap.near' || String(t.symbol || '').trim().toUpperCase() !== 'NEAR')).sort((a, b) => tokenPriority(a) - tokenPriority(b) || String(a.symbol || '').localeCompare(String(b.symbol || ''))), [destinations, destinationChain]);
   useEffect(() => {
     let cancelled = false;
     async function scanWalletTokens() {
