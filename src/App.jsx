@@ -430,6 +430,14 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
     setCustomerHistory(readLocalCustomerHistory(customerAccount));
   }, [historyStorageKey]);
 
+  function normalizeHistoryRow(row) {
+    if (!row || typeof row !== 'object') return row;
+    const nearWrap = String(row.destinationNetwork || '').trim().toLowerCase() === 'near' &&
+      (String(row.destinationAsset || '').trim().toLowerCase() === 'nep141:wrap.near' ||
+       String(row.destinationToken || '').trim().toUpperCase() === 'NEAR (NATIVE)' ||
+       String(row.payoutKind || '').trim().toUpperCase() === 'NATIVE_NEAR');
+    return nearWrap ? { ...row, destinationToken: 'WNEAR', payoutKind: 'TOKEN' } : row;
+  }
   function mergeHistoryRows(...groups) {
     const byId = new Map();
     for (const rawRow of groups.flat()) {
