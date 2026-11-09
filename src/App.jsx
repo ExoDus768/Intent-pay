@@ -1527,7 +1527,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
         <label>Choose payout token</label>
         <select value={destinationAsset} onChange={e => setDestinationAsset(e.target.value)} required disabled={Boolean(isWidgetCheckout) || !destinationChain || loadingTokens}>
           <option value="">{!destinationChain ? 'Choose a payout network first' : 'Select available payout token'}</option>
-          {destinationTokens.map(t => <option key={t.assetId} value={t.assetId}>{t.symbol || 'TOKEN'}{t.name && t.name !== t.symbol ? ' · ' + t.name : ''}</option>)}
+          {destinationTokens.map(t => <option key={t.assetId} value={t.assetId}>{t.symbol || 'TOKEN'}{String(t.assetId || '').toLowerCase() === 'nep141:wrap.near' ? ' (merchant receives native NEAR)' : t.name && t.name !== t.symbol ? ' · ' + t.name : ''}</option>)}
         </select>
         {destinationChain === 'near' && <p className="helper-text">WNEAR is the canonical NEAR Intents asset (nep141:wrap.near). For a NEAR-chain recipient, 1Click unwraps it and delivers native NEAR.</p>}
         {destinationChain && destinationTokens.length === 0 && <p className="warning">No payout tokens are currently listed for {chainLabel(destinationChain)} in the live NEAR Intents registry. Choose another network.</p>}
