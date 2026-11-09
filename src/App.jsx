@@ -165,13 +165,16 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
     return () => clearInterval(interval);
   }, [quote?.quote?.deadline]);
 
-  const quoteSecondsRemaining = quote?.quote?.deadline
-    ? Math.max(0, Math.ceil((Date.parse(quote.quote.deadline) - quoteClock) / 1000))
+  const quoteDeadlineMs = quote?.quote?.deadline
+    ? Date.parse(quote.quote.deadline)
+    : NaN;
+  const quoteSecondsRemaining = Number.isFinite(quoteDeadlineMs)
+    ? Math.max(0, Math.ceil((quoteDeadlineMs - quoteClock) / 1000))
     : null;
   const quoteExpired = quoteSecondsRemaining === 0;
   const quoteCountdownLabel = quoteSecondsRemaining === null
     ? 'Provider-defined'
-    : `${Math.floor(quoteSecondsRemaining / 60)}:${String(quoteSecondsRemaining % 60).padStart(2, '0')}`;
+    : `${String(Math.floor(quoteSecondsRemaining / 3600)).padStart(2, '0')}:${String(Math.floor((quoteSecondsRemaining % 3600) / 60)).padStart(2, '0')}:${String(quoteSecondsRemaining % 60).padStart(2, '0')}`;
   const evmProvidersRef = useRef([]);
   const activeEvmProviderRef = useRef(null);
   const activeSolProviderRef = useRef(null);
