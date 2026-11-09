@@ -1473,7 +1473,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
         <label>Choose payout token</label>
         <select value={destinationAsset} onChange={e => setDestinationAsset(e.target.value)} required disabled={Boolean(isWidgetCheckout) || !destinationChain || loadingTokens}>
           <option value="">{!destinationChain ? 'Choose a payout network first' : 'Select available payout token'}</option>
-          {destinationTokens.map(t => <option key={t.assetId} value={t.assetId}>{t.symbol || 'TOKEN'}{t.name ? ' · ' + t.name : ''}</option>)}
+          {destinationTokens.map(t => <option key={t.assetId} value={t.assetId}>{String(t.assetId).toLowerCase() === 'nep141:wrap.near' ? 'NEAR' : (t.symbol || 'TOKEN')}{String(t.assetId).toLowerCase() === 'nep141:wrap.near' ? ' · Native NEAR payout' : (t.name ? ' · ' + t.name : '')}</option>)}
         </select>
         {destinationChain && destinationTokens.length === 0 && <p className="warning">No payout tokens are currently listed for {chainLabel(destinationChain)} in the live NEAR Intents registry. Choose another network.</p>}
         {destinationChain && destinationTokens.length > 0 && !destinationTokens.some(t => String(t.symbol || '').toUpperCase() === 'USDT') && <p className="helper-text">USDT is not currently listed as a supported payout token on {chainLabel(destinationChain)} by NEAR Intents. Other listed tokens are shown above.</p>}
