@@ -41,13 +41,13 @@ export default function MerchantTools({ open = false, onClose = () => {}, tokens
     tokens.filter(t => t?.assetId && validatedPayoutChains.has(chainOf(t))).map(chainOf)
   )].sort(), [tokens]);
   const payoutTokens = useMemo(() => tokens
-    .filter(t => t?.assetId && destinationChain && chainOf(t) === destinationChain)
+    .filter(t => t?.assetId && destinationChain && chainOf(t) === destinationChain && (destinationChain !== 'near' || String(t.symbol || '').toUpperCase() !== 'WNEAR' || String(t.assetId || '').toLowerCase() === 'nep141:wrap.near'))
     .sort((a, b) => {
       const priority = token => String(token?.assetId || '').toLowerCase() === 'nep141:wrap.near' ? 2 : ({ USDC: 0, USDT: 1, NEAR: 2, WNEAR: 3 }[String(token?.symbol || '').toUpperCase()] ?? 10);
       return priority(a) - priority(b) || String(a.symbol || '').localeCompare(String(b.symbol || ''));
     }), [tokens, destinationChain]);
   const selected = tokens.find(t => String(t.assetId) === String(destinationAsset) && chainOf(t) === destinationChain);
-  const displayTokenSymbol = t => String(t?.assetId || '').toLowerCase() === 'nep141:wrap.near' ? 'NEAR' : (t?.symbol || 'TOKEN');
+  const displayTokenSymbol = t => String(t?.assetId || '').toLowerCase() === 'nep141:wrap.near' ? 'NEAR (native)' : (t?.symbol || 'TOKEN');
   const payoutChain = chainOf(selected || {});
   const isNearPayout = payoutChain === 'near';
   const isSolanaPayout = payoutChain === 'solana';
