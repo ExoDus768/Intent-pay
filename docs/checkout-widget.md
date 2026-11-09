@@ -1,6 +1,6 @@
-# IntentPay Universal Checkout Widget
+# XoDuspay Universal Checkout Widget
 
-IntentPay provides a reusable checkout button for merchants and apps. Customers open a hosted checkout, connect a supported mainnet wallet, review a live NEAR Intents quote and approve the payment themselves.
+XoDuspay provides a reusable checkout button for merchants and apps. Customers open a hosted checkout, connect a supported mainnet wallet, review a live NEAR Intents quote and approve the payment themselves.
 
 ## Configure the widget
 
@@ -16,8 +16,8 @@ Copy the generated embed snippet or hosted checkout link.
 Paste the generated snippet into your page:
 
 ```html
-<button type="button" data-intentpay-checkout data-intentpay-url="YOUR_GENERATED_CHECKOUT_URL">Pay with crypto</button>
-<script src="https://intent-pay-exo-c836.vercel.app/intentpay.js" defer></script>
+<button type="button" data-xoduspay-checkout data-xoduspay-url="YOUR_GENERATED_CHECKOUT_URL">Pay with crypto</button>
+<script src="https://xoduspay-exo-c836.vercel.app/xoduspay.js" defer></script>
 ```
 
 The generated URL contains the selected payout asset and public receiving address. A fixed-price widget also includes its payout amount. Treat the link as public: do not put private keys, API credentials or secrets in it.
@@ -25,7 +25,7 @@ The generated URL contains the selected payout asset and public receiving addres
 ## Open checkout programmatically
 
 ```js
-window.IntentPay.open({
+window.XoDuspay.open({
   merchantAsset: 'LIVE_1CLICK_ASSET_ID',
   merchantRecipient: 'MERCHANT_WALLET_ADDRESS',
   amount: '25.00', // optional; omit for customer-entered amount
@@ -36,16 +36,16 @@ window.IntentPay.open({
 You can also pass a generated same-origin checkout URL:
 
 ```js
-window.IntentPay.open({ url: 'YOUR_GENERATED_CHECKOUT_URL' });
+window.XoDuspay.open({ url: 'YOUR_GENERATED_CHECKOUT_URL' });
 ```
 
 ## Events
 
-The widget emits `intentpay:open` after opening hosted checkout and `intentpay:error` if its configuration is invalid.
+The widget emits `xoduspay:open` after opening hosted checkout and `xoduspay:error` if its configuration is invalid.
 
 ```js
-document.addEventListener('intentpay:open', event => console.log('Checkout opened', event.detail));
-document.addEventListener('intentpay:error', event => console.error(event.detail.message));
+document.addEventListener('xoduspay:open', event => console.log('Checkout opened', event.detail));
+document.addEventListener('xoduspay:error', event => console.error(event.detail.message));
 ```
 
 ## Payment safety and status
