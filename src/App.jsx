@@ -343,12 +343,22 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
   const customerAccount = isNearToken(origin || {}) ? nearWallet : wallet;
 
   const historyStorageKey = customerAccount ? 'xoduspay_customer_history_' + customerAccount.toLowerCase() : '';
+  function readLocalCustomerHistory(account) {
+    if (!account) return [];
+    const normalized = account.toLowerCase();
+    const currentKey = 'xoduspay_customer_history_' + normalized;
+    const legacyKey = 'intentpay_customer_history_' + normalized;
+    const read = key => {
+      try { const value = JSON.parse(localStorage.getItem(key) || '[]'); return Array.isArray(value) ? value : []; }
+      catch { return []; }
+    };
+    const merged = mergeHistoryRows(read(legacyKey), read(currentKey));
+    if (merged.length) localStorage.setItem(currentKey, JSON.stringify(merged));
+    return merged;
+  }
   useEffect(() => {
     if (!historyStorageKey) { setCustomerHistory([]); return; }
-    try {
-      const saved = JSON.parse(localStorage.getItem(historyStorageKey) || '[]');
-      setCustomerHistory(Array.isArray(saved) ? saved : []);
-    } catch { setCustomerHistory([]); }
+    setCustomerHistory(readLocalCustomerHistory(customerAccount));
   }, [historyStorageKey]);
 
   function mergeHistoryRows(...groups) {
@@ -411,7 +421,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
       const cloud = await cloudResponse.json();
       if (!cloudResponse.ok) throw new Error(cloud.error || 'Could not load synced transaction history.');
       let localRows = [];
-      try { localRows = JSON.parse(localStorage.getItem('xoduspay_customer_history_' + account.toLowerCase()) || '[]'); } catch {}
+      try { localRows = readLocalCustomerHistory(account); } catch {}
       const merged = mergeHistoryRows(Array.isArray(cloud.entries) ? cloud.entries : [], Array.isArray(localRows) ? localRows : []);
       if (cancelled) return;
       setCustomerHistory(merged);
