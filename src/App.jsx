@@ -712,17 +712,10 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
 
   function getSolanaInjectedProvider() {
     const candidates = [
-      window.okxwallet?.solana,
-      window.okxwallet?.solanaProvider,
-      window.jupiter?.solana,
-      window.jupiter,
-      window.phantom?.solana,
-      window.solflare,
-      window.backpack?.solana,
-      window.coinbaseSolana,
-      window.trustwallet?.solana,
-      window.braveSolana,
-      window.solana
+      window.phantom?.solana, window.solflare, window.backpack?.solana,
+      window.okxwallet?.solana, window.okxwallet?.solanaProvider,
+      window.jupiter?.solana, window.jupiter, window.coinbaseSolana,
+      window.trustwallet?.solana, window.braveSolana, window.solana
     ];
     return candidates.find(provider =>
       provider && typeof provider.connect === 'function' &&
@@ -732,8 +725,9 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
 
   async function connectSolanaWallet() {
     setWalletAction('solana');
-    setWalletFeedback('Auto-detecting Solana wallet connection…');
+    setWalletFeedback('Discovering compatible Solana wallets…');
     try {
+      // First use an injected provider when the page is already open inside a wallet browser.
       const injected = getSolanaInjectedProvider();
       if (injected) {
         const response = await injected.connect();
@@ -743,8 +737,8 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
         if (publicKey.toBase58() !== address) throw new Error('The connected Solana public key is invalid.');
         activeSolProviderRef.current = injected;
         setSolWallet(address);
-        setWalletFeedback('Solana wallet connected successfully.');
-        setNotice('Connected automatically through your wallet browser. Choose SOL or a supported SPL token to pay.');
+        setWalletFeedback('Solana wallet connected: ' + (injected.isPhantom ? 'Phantom' : injected.isSolflare ? 'Solflare' : 'wallet'));
+        setNotice('Solana wallet connected on mainnet. Choose SOL or a supported SPL token to pay.');
         setWalletMenuOpen(false);
         injected.on?.('accountChanged', next => {
           const nextAddress = next?.toString?.() || '';
@@ -753,7 +747,72 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
         });
         return;
       }
-      setWalletFeedback('No injected provider found. Launching the native mobile wallet connection…');
+
+      // Wallet Standard discovers compatible browser wallets without hard-coding brands.
+      const { getWallets } = await import('@wallet-standard/app');
+      const walletRegistry = getWallets();
+      const supportedWallets = walletRegistry.get().filter(wallet =>
+        wallet.chains?.some(chain => chain === 'solana:mainnet') &&
+        wallet.features?.['standard:connect'] &&
+        (wallet.features?.['solana:signTransaction'] || wallet.features?.['solana:signAndSendTransaction'])
+      );
+      if (supportedWallets.length) {
+        const selectedWallet = supportedWallets[0];
+        const { accounts = [] } = await selectedWallet.features['standard:connect'].connect();
+        const account = accounts.find(item =>
+          item.chains?.includes('solana:mainnet') &&
+          (item.features?.includes('solana:signTransaction') || item.features?.includes('solana:signAndSendTransaction'))
+        ) || accounts[0];
+        if (!account?.address) throw new Error(selectedWallet.name + ' did not return a Solana mainnet account.');
+        const signFeature = selectedWallet.features['solana:signTransaction'];
+        const sendFeature = selectedWallet.features['solana:signAndSendTransaction'];
+        const standardProvider = {
+          publicKey: new PublicKey(account.address),
+          signTransaction: async transaction => {
+            if (!signFeature) throw new Error(selectedWallet.name + ' does not support transaction signing.');
+            const bytes = transaction.serialize({ requireAllSignatures: false, verifySignatures: false });
+            const [signed] = await signFeature.signTransaction({
+              account, chain: 'solana:mainnet', transaction: bytes
+            });
+            if (!signed?.signedTransaction) throw new Error(selectedWallet.name + ' did not return a signed transaction.');
+            return Transaction.from(signed.signedTransaction);
+          },
+          signAndSendTransaction: async (transaction, connection, options = {}) => {
+            if (sendFeature) {
+              const bytes = transaction.serialize({ requireAllSignatures: false, verifySignatures: false });
+              const [result] = await sendFeature.signAndSendTransaction({
+                account, chain: 'solana:mainnet', transaction: bytes,
+                options: { preflightCommitment: options.preflightCommitment || 'confirmed' }
+              });
+              return result?.signature;
+            }
+            const signed = await standardProvider.signTransaction(transaction);
+            return connection.sendRawTransaction(signed.serialize(), options);
+          }
+        };
+        activeSolProviderRef.current = standardProvider;
+        setSolWallet(account.address);
+        setWalletFeedback('Connected to ' + selectedWallet.name + ' through Solana Wallet Standard.');
+        setNotice('Solana wallet connected on mainnet. Choose SOL or a supported SPL token to pay.');
+        setWalletMenuOpen(false);
+        const events = selectedWallet.features?.['standard:events'];
+        events?.on?.('change', event => {
+          const next = event?.accounts?.find(item => item.chains?.includes('solana:mainnet'));
+          if (next?.address) {
+            standardProvider.publicKey = new PublicKey(next.address);
+            setSolWallet(next.address);
+          } else if (event?.accounts) {
+            activeSolProviderRef.current = null;
+            setSolWallet('');
+            setQuote(null);
+            setTxHash('');
+          }
+        });
+        return;
+      }
+
+      // Wallets without an injected/Wallet Standard browser provider can use Android MWA.
+      setWalletFeedback('No browser wallet detected. Trying the mobile wallet connection…');
       const {
         SolanaMobileWalletAdapter,
         createDefaultAddressSelector,
@@ -765,8 +824,8 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
         addressSelector: createDefaultAddressSelector(),
         cluster: 'mainnet-beta',
         onWalletNotFound: async () => {
-          setWalletFeedback('No MWA wallet responded.');
-          setNotice('Jupiter supports Solana Mobile Wallet Adapter, but its in-app browser may block the wallet handoff. Try opening this checkout in Chrome on the same Android device, then connect again.');
+          setWalletFeedback('No compatible Solana wallet responded.');
+          setNotice('No compatible wallet was detected in this browser. Open XoDuspay inside a supported wallet app, or use a browser with a Solana wallet extension installed.');
         }
       });
       await adapter.connect();
@@ -774,8 +833,8 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
       if (!address) throw new Error('The mobile wallet connected without returning a Solana public key.');
       activeSolProviderRef.current = adapter;
       setSolWallet(address);
-      setWalletFeedback('Mobile Solana wallet connected successfully.');
-      setNotice('Connected through Solana Mobile Wallet Adapter on mainnet. Choose SOL or a supported SPL token to pay.');
+      setWalletFeedback('Solana mobile wallet connected successfully.');
+      setNotice('Solana wallet connected on mainnet. Choose SOL or a supported SPL token to pay.');
       setWalletMenuOpen(false);
       adapter.on?.('disconnect', () => {
         activeSolProviderRef.current = null;
@@ -786,8 +845,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
     } catch (error) {
       const message = error?.message || 'Unknown error';
       setWalletFeedback('Solana connection failed: ' + message);
-      const inApp = /webview|navigation.*blocked|wallet not found|timed out|timeout/i.test(message);
-      setNotice('Solana connection failed: ' + message + (inApp ? ' Jupiter Mobile is MWA-compatible, but its embedded browser may block the app handoff. Open this same page in Chrome on Android and retry.' : ''));
+      setNotice('Could not connect a Solana wallet: ' + message + ' Make sure your wallet is installed and open, or open XoDuspay inside that wallet app.');
     } finally { setWalletAction(''); }
   }
 
