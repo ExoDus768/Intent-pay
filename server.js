@@ -382,35 +382,27 @@ function cleanHistoryEntries(entries) {
     error.status = 400;
     throw error;
   }
-  return entries.slice(0, 100).filter(item => item && typeof item.id === 'string' && item.id.length <= 180).map(item => {
-    const destinationNetwork = String(item.destinationNetwork || '').slice(0, 60);
-    const destinationAsset = String(item.destinationAsset || '').slice(0, 180);
-    const legacyNearLabel = destinationNetwork.trim().toLowerCase() === 'near' &&
-      !destinationAsset && String(item.destinationToken || '').trim().toUpperCase() === 'WNEAR';
-    const nativeNear = destinationNetwork.trim().toLowerCase() === 'near' &&
-      (String(item.payoutKind || '').toUpperCase() === 'NATIVE_NEAR' ||
-        destinationAsset.toLowerCase() === 'nep141:wrap.near' || legacyNearLabel);
-    return {
-      id: item.id,
-      merchant: String(item.merchant || 'Merchant payment').slice(0, 100),
-      purpose: String(item.purpose || '').slice(0, 160),
-      sourceNetwork: String(item.sourceNetwork || '').slice(0, 60),
-      sourceToken: String(item.sourceToken || '').slice(0, 30),
-      destinationNetwork,
-      destinationAsset: nativeNear ? 'nep141:wrap.near' : destinationAsset,
-      payoutKind: nativeNear ? 'NATIVE_NEAR' : String(item.payoutKind || 'TOKEN').slice(0, 40),
-      destinationToken: nativeNear ? 'NEAR (native)' : String(item.destinationToken || '').slice(0, 30),
-      amountPaid: String(item.amountPaid || '').slice(0, 80),
-      amountReceived: String(item.amountReceived || '').slice(0, 80),
-      transactionHash: String(item.transactionHash || '').slice(0, 180),
-      depositAddress: String(item.depositAddress || '').slice(0, 180),
-      status: String(item.status || 'PROCESSING').slice(0, 40),
-      fixedAmount: Boolean(item.fixedAmount),
-      createdAt: normalizeHistoryDate(item.createdAt, new Date().toISOString()),
-      updatedAt: normalizeHistoryDate(item.updatedAt, new Date().toISOString())
-    };
-  });
+  return entries.slice(0, 100).filter(item => item && typeof item.id === 'string' && item.id.length <= 180).map(item => ({
+    id: item.id,
+    merchant: String(item.merchant || 'Merchant payment').slice(0, 100),
+    purpose: String(item.purpose || '').slice(0, 160),
+    sourceNetwork: String(item.sourceNetwork || '').slice(0, 60),
+    sourceToken: String(item.sourceToken || '').slice(0, 30),
+    destinationNetwork: String(item.destinationNetwork || '').slice(0, 60),
+    destinationAsset: String(item.destinationAsset || '').slice(0, 180),
+    payoutKind: String(item.payoutKind || 'TOKEN').slice(0, 40),
+    destinationToken: String(item.destinationToken || '').slice(0, 30),
+    amountPaid: String(item.amountPaid || '').slice(0, 80),
+    amountReceived: String(item.amountReceived || '').slice(0, 80),
+    transactionHash: String(item.transactionHash || '').slice(0, 180),
+    depositAddress: String(item.depositAddress || '').slice(0, 180),
+    status: String(item.status || 'PROCESSING').slice(0, 40),
+    fixedAmount: Boolean(item.fixedAmount),
+    createdAt: normalizeHistoryDate(item.createdAt, new Date().toISOString()),
+    updatedAt: normalizeHistoryDate(item.updatedAt, new Date().toISOString())
+  }));
 }
+
 async function readWalletHistorySnapshot(wallet) {
   const pathname = 'customer-history/' + historyWalletKey(wallet) + '.json';
   const blob = await getBlob(pathname, { access: 'private' });
@@ -625,12 +617,6 @@ app.post('/api/quote', quoteLimiter, async (req, res) => {
   try {
     const tokens = await getTokens();
     input = validateQuoteBody(req.body, tokens);
-    const isNativeNearPayout = input.destination.blockchain === 'near' &&
-      String(input.destination.assetId).toLowerCase() === 'nep141:wrap.near';
-    if (input.destination.blockchain === 'near' && !isNativeNearPayout &&
-        String(input.destination.symbol || '').toUpperCase() === 'WNEAR') {
-      return res.status(400).json({ error: 'NEAR Intents lists this as a wrapped NEAR token, not the native NEAR payout asset. Select the canonical NEAR payout option.' });
-    }
     const request = {
       dry: req.body?.dry === true,
       swapType: input.swapType,
@@ -691,27 +677,11 @@ app.post('/api/quote', quoteLimiter, async (req, res) => {
         }
       };
     }
-    // For nep141:wrap.near paid to the NEAR destination chain, 1Click unwraps
-    // the Intents balance and delivers native NEAR (not a wrap.near FT transfer).
-    // Keep the API asset id intact; this metadata describes settlement semantics.
-    if (isNativeNearPayout && data?.quote?.recipientType && data.quote.recipientType !== 'DESTINATION_CHAIN') {
-      return res.status(502).json({ error: '1Click returned a non-chain recipient for the requested native NEAR payout. Do not send this payment.' });
-    }
-    if (isNativeNearPayout && data?.quote?.destinationAsset &&
-        String(data.quote.destinationAsset).toLowerCase() !== 'nep141:wrap.near') {
-      return res.status(502).json({ error: '1Click returned a different payout asset than the requested native NEAR route. Do not send this payment.' });
-    }
-    if (isNativeNearPayout && data?.quote?.recipient &&
-        String(data.quote.recipient).toLowerCase() !== input.recipient.toLowerCase()) {
-      return res.status(502).json({ error: '1Click returned a different merchant recipient than requested. Do not send this payment.' });
-    }
     res.json({
       ...data,
       xoduspay: {
         origin: input.origin,
         destination: input.destination,
-        payoutKind: isNativeNearPayout ? 'NATIVE_NEAR' : 'TOKEN',
-        payoutSymbol: isNativeNearPayout ? 'NEAR' : input.destination.symbol
       }
     });
   } catch (error) {
@@ -764,51 +734,6 @@ app.post('/api/deposit/submit', paymentActionLimiter, async (req, res) => {
 });
 
 
-async function nearTransactionHasNativePayout(txHash, recipient, minimumAmount) {
-  if (typeof txHash !== 'string' || !/^[1-9A-HJ-NP-Za-km-z]{32,64}$/.test(txHash) ||
-      !isNearAccount(recipient) || !/^\d+$/.test(String(minimumAmount || ''))) return false;
-  try {
-    const response = await fetch('https://rpc.mainnet.near.org', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        jsonrpc: '2.0', id: 'xoduspay-settlement-check', method: 'EXPERIMENTAL_tx_status',
-        params: { tx_hash: txHash, sender_account_id: 'intents.near', wait_until: 'FINAL' }
-      }),
-      signal: AbortSignal.timeout(10000)
-    });
-    if (!response.ok) return false;
-    const payload = await response.json();
-    const result = payload?.result;
-    if (payload?.error || !result || !result.status || !result.transaction) return false;
-    const txSucceeded = Boolean(result.status.SuccessValue !== undefined || result.status.SuccessReceiptId);
-    if (!txSucceeded) return false;
-    const transfers = [];
-    const inspectActions = (receiverId, actions, succeeded) => {
-      if (!succeeded || receiverId !== recipient || !Array.isArray(actions)) return;
-      for (const action of actions) {
-        const raw = action?.Transfer?.deposit ?? action?.transfer?.deposit;
-        if (raw !== undefined && /^\d+$/.test(String(raw))) transfers.push(BigInt(raw));
-      }
-    };
-    const top = result.transaction;
-    inspectActions(top.receiver_id, top.actions, txSucceeded);
-    for (const item of result.receipts_outcome || []) {
-      const receipt = item?.receipt;
-      const status = item?.outcome?.status || {};
-      const succeeded = status.SuccessValue !== undefined || Boolean(status.SuccessReceiptId);
-      const actions = receipt?.Action?.actions || receipt?.action?.actions;
-      inspectActions(receipt?.receiver_id, actions, succeeded);
-    }
-    const required = BigInt(minimumAmount);
-    return transfers.some(amount => amount >= required);
-  } catch (error) {
-    console.error('[Settlement] NEAR RPC verification unavailable', { txHash, message: String(error?.message || error).slice(0, 240) });
-    return false;
-  }
-}
-
-
 app.get('/api/status', async (req, res) => {
   const { depositAddress, depositMemo } = req.query;
   if (typeof depositAddress !== 'string' || depositAddress.length < 5 || depositAddress.length > 160) {
@@ -818,34 +743,7 @@ app.get('/api/status', async (req, res) => {
     const query = new URLSearchParams({ depositAddress });
     if (typeof depositMemo === 'string' && depositMemo) query.set('depositMemo', depositMemo);
     const data = await oneClick(`/status?${query.toString()}`, { method: 'GET' });
-    const quoteRequest = data?.quoteResponse?.quoteRequest || data?.quoteRequest || {};
-    const nativeNearPayout = String(quoteRequest.destinationAsset || data?.quoteResponse?.quote?.destinationAsset || '').toLowerCase() === 'nep141:wrap.near' &&
-      String(quoteRequest.recipientType || data?.quoteResponse?.quote?.recipientType || 'DESTINATION_CHAIN') === 'DESTINATION_CHAIN';
-    if (data.status === 'SUCCESS' && nativeNearPayout) {
-      const recipient = String(quoteRequest.recipient || data?.quoteResponse?.quote?.recipient || '');
-      const amountOut = String(data?.swapDetails?.amountOut || '');
-      const nearTxHashes = Array.isArray(data?.swapDetails?.nearTxHashes) ? data.swapDetails.nearTxHashes : [];
-      let verifiedTxHash = null;
-      if (isNearAccount(recipient) && /^\\d+$/.test(amountOut)) {
-        for (const hash of nearTxHashes) {
-          if (await nearTransactionHasNativePayout(hash, recipient, amountOut)) {
-            verifiedTxHash = hash;
-            break;
-          }
-        }
-      }
-      if (!verifiedTxHash) {
-        return res.json({
-          ...data, status: 'PROCESSING', terminal: false, settlementVerified: false,
-          settlementMessage: 'NEAR Intents reports execution, but XoDuspay has not independently verified the native NEAR transfer to the merchant yet.'
-        });
-      }
-      return res.json({
-        ...data, status: 'SUCCESS', terminal: true, settlementVerified: true,
-        settlementRecipient: recipient, settlementAmount: amountOut, settlementTxHash: verifiedTxHash
-      });
-    }
-    res.json({ ...data, terminal: TERMINAL.has(data.status), settlementVerified: data.status === 'SUCCESS' });
+    res.json({ ...data, terminal: TERMINAL.has(data.status) });
   } catch (error) { res.status(error.status || 502).json({ error: error.message }); }
 });
 
