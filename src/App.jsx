@@ -1004,8 +1004,29 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
           const walletName = isZerion(selected) || /zerion/i.test((item?.info?.name || '') + ' ' + (item?.info?.rdns || ''))
             ? 'Zerion' : (item?.info?.name || 'EVM');
           setNotice(walletName + ' wallet connected. Your connected address will be used as the refund address.');
-          selected.on?.('accountsChanged', next => setWallet(next?.[0] || ''));
-          selected.on?.('chainChanged', chainId => { setQuote(null); const matching = origins.find(t => CHAIN_IDS[tokenChain(t)] === Number(chainId)); if (matching) { setOriginChain(tokenChain(matching)); setOriginAsset(''); } });
+          selected.on?.('accountsChanged', next => {
+            setWallet(next?.[0] || '');
+            setOriginAsset('');
+            setOriginBalance('');
+            setWalletTokenBalances({});
+            setQuote(null);
+          });
+          selected.on?.('chainChanged', chainId => {
+            const parsedChainId = typeof chainId === 'string' && chainId.startsWith('0x')
+              ? Number.parseInt(chainId, 16) : Number(chainId);
+            const matchingChain = Object.entries(CHAIN_IDS)
+              .find(([name, id]) => id === parsedChainId && !['ethereum', 'arbitrum', 'optimism', 'avalanche', 'berachain'].includes(name));
+            setQuote(null);
+            setOriginAsset('');
+            setOriginBalance('');
+            setBalanceError('');
+            setWalletTokenBalances({});
+            setWalletTokenScan({ loading: false, error: '', complete: false });
+            setOriginChain(matchingChain?.[0] || '');
+            setNotice(matchingChain
+              ? 'Wallet network changed to ' + chainLabel(matchingChain[0]) + '. Detecting available tokens and balances…'
+              : 'Wallet network changed. Select a supported payment network to detect tokens.');
+          });
           connected = true;
           break;
         } catch (error) {
@@ -1052,8 +1073,29 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
       setWallet(await (await provider.getSigner()).getAddress());
       setWalletFeedback('WalletConnect wallet connected successfully.');
       setNotice('WalletConnect wallet connected. Your address will be used for refunds.');
-      wc.on('accountsChanged', next => setWallet(next?.[0] || ''));
-      wc.on('chainChanged', chainId => { setQuote(null); const matching = origins.find(t => CHAIN_IDS[tokenChain(t)] === Number(chainId)); if (matching) { setOriginChain(tokenChain(matching)); setOriginAsset(''); } });
+      wc.on('accountsChanged', next => {
+        setWallet(next?.[0] || '');
+        setOriginAsset('');
+        setOriginBalance('');
+        setWalletTokenBalances({});
+        setQuote(null);
+      });
+      wc.on('chainChanged', chainId => {
+        const parsedChainId = typeof chainId === 'string' && chainId.startsWith('0x')
+          ? Number.parseInt(chainId, 16) : Number(chainId);
+        const matchingChain = Object.entries(CHAIN_IDS)
+          .find(([name, id]) => id === parsedChainId && !['ethereum', 'arbitrum', 'optimism', 'avalanche', 'berachain'].includes(name));
+        setQuote(null);
+        setOriginAsset('');
+        setOriginBalance('');
+        setBalanceError('');
+        setWalletTokenBalances({});
+        setWalletTokenScan({ loading: false, error: '', complete: false });
+        setOriginChain(matchingChain?.[0] || '');
+        setNotice(matchingChain
+          ? 'Wallet network changed to ' + chainLabel(matchingChain[0]) + '. Detecting available tokens and balances…'
+          : 'Wallet network changed. Select a supported payment network to detect tokens.');
+      });
     } catch (error) {
       setWalletFeedback('WalletConnect failed: ' + (error?.message || 'Unknown error'));
       setNotice('WalletConnect failed: ' + (error?.message || 'Unknown error'));
