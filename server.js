@@ -840,29 +840,32 @@ app.get('/api/status', async (req, res) => {
     const query = new URLSearchParams({ depositAddress });
     if (typeof depositMemo === 'string' && depositMemo) query.set('depositMemo', depositMemo);
     const data = await oneClick(`/status?${query.toString()}`, { method: 'GET' });
-    const nativeNearPayout = String(data?.quote?.destinationAsset || data?.destinationAsset || '').toLowerCase() === 'nep141:wrap.near' &&
-      String(data?.quote?.recipientType || data?.recipientType || 'DESTINATION_CHAIN') === 'DESTINATION_CHAIN';
+    const quoteRequest = data?.quoteResponse?.quoteRequest || data?.quoteRequest || {};
+    const nativeNearPayout = String(quoteRequest.destinationAsset || data?.quoteResponse?.quote?.destinationAsset || '').toLowerCase() === 'nep141:wrap.near' &&
+      String(quoteRequest.recipientType || data?.quoteResponse?.quote?.recipientType || 'DESTINATION_CHAIN') === 'DESTINATION_CHAIN';
     if (data.status === 'SUCCESS' && nativeNearPayout) {
-      try {
-        const settlement = await verifyNativeNearExplorerPayout(depositAddress);
-        if (!settlement?.verified) {
-          return res.json({
-            ...data, status: 'PROCESSING', terminal: false, settlementVerified: false,
-            settlementMessage: 'NEAR Intents reports execution, but XoDuspay has not independently verified the native NEAR transfer to the merchant yet.'
-          });
+      const recipient = String(quoteRequest.recipient || data?.quoteResponse?.quote?.recipient || '');
+      const amountOut = String(data?.swapDetails?.amountOut || '');
+      const nearTxHashes = Array.isArray(data?.swapDetails?.nearTxHashes) ? data.swapDetails.nearTxHashes : [];
+      let verifiedTxHash = null;
+      if (isNearAccount(recipient) && /^\\d+$/.test(amountOut)) {
+        for (const hash of nearTxHashes) {
+          if (await nearTransactionHasNativePayout(hash, recipient, amountOut)) {
+            verifiedTxHash = hash;
+            break;
+          }
         }
-        return res.json({
-          ...data, status: 'SUCCESS', terminal: true, settlementVerified: true,
-          settlementRecipient: settlement.recipient, settlementAmount: settlement.amountOut,
-          settlementTxHash: settlement.txHash
-        });
-      } catch (verificationError) {
-        console.error('[Settlement] native NEAR verification deferred', { message: String(verificationError?.message || verificationError).slice(0, 240) });
+      }
+      if (!verifiedTxHash) {
         return res.json({
           ...data, status: 'PROCESSING', terminal: false, settlementVerified: false,
-          settlementMessage: 'Waiting for independent native NEAR payout verification.'
+          settlementMessage: 'NEAR Intents reports execution, but XoDuspay has not independently verified the native NEAR transfer to the merchant yet.'
         });
       }
+      return res.json({
+        ...data, status: 'SUCCESS', terminal: true, settlementVerified: true,
+        settlementRecipient: recipient, settlementAmount: amountOut, settlementTxHash: verifiedTxHash
+      });
     }
     res.json({ ...data, terminal: TERMINAL.has(data.status), settlementVerified: data.status === 'SUCCESS' });
   } catch (error) { res.status(error.status || 502).json({ error: error.message }); }
