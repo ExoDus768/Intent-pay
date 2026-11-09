@@ -206,8 +206,41 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
   const walletConnectProviderRef = useRef(null);
   const getSolanaConnection = () => {
     if (!solanaConnectionRef.current) {
-      const endpoint = import.meta.env.VITE_SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com';
-      solanaConnectionRef.current = new Connection(endpoint, 'confirmed');
+      const configured = import.meta.env.VITE_SOLANA_RPC_URL;
+      const endpoints = [...new Set([
+        configured,
+        'https://api.mainnet.solana.com',
+        'https://api.mainnet-beta.solana.com',
+        'https://free.rpcpool.com'
+      ].filter(Boolean))];
+      let activeIndex = 0;
+      const connections = endpoints.map(endpoint => new Connection(endpoint, 'confirmed'));
+      const activeConnection = () => connections[activeIndex];
+      // Keep the standard web3.js Connection interface, but retry failed RPC
+      // methods against public mainnet providers when one endpoint blocks traffic.
+      solanaConnectionRef.current = new Proxy(activeConnection(), {
+        get(_target, property) {
+          const current = activeConnection();
+          const value = Reflect.get(current, property, current);
+          if (typeof value !== 'function') return value;
+          return async (...args) => {
+            let lastError;
+            for (let attempt = 0; attempt < connections.length; attempt++) {
+              const connection = activeConnection();
+              try {
+                return await Reflect.get(connection, property, connection).apply(connection, args);
+              } catch (error) {
+                lastError = error;
+                const message = String(error?.message || error);
+                const blocked = /403|forbidden|access denied|failed to fetch|networkerror/i.test(message);
+                if (!blocked || attempt === connections.length - 1) throw error;
+                activeIndex = (activeIndex + 1) % connections.length;
+              }
+            }
+            throw lastError || new Error('All configured Solana mainnet RPC providers failed.');
+          };
+        }
+      });
     }
     return solanaConnectionRef.current;
   };
