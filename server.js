@@ -204,7 +204,8 @@ function validateQuoteBody(body, tokens) {
   // Use the registry's WNEAR asset (nep141:wrap.near); 1Click unwraps it
   // automatically when the destination chain is NEAR.
   if (String(destination.blockchain || '').toLowerCase() === 'near' &&
-      String(destination.symbol || '').trim().toUpperCase() === 'NEAR') {
+      String(destination.symbol || '').trim().toUpperCase() === 'NEAR' &&
+      String(destination.assetId || '').toLowerCase() !== 'nep141:wrap.near') {
     const error = new Error('Select WNEAR (nep141:wrap.near) for a NEAR payout. 1Click delivers native NEAR to the NEAR account.');
     error.status = 400;
     throw error;
