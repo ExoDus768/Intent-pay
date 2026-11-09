@@ -591,6 +591,20 @@ app.post('/api/quote', quoteLimiter, async (req, res) => {
       if (!data?.quote?.depositAddress || !data?.quote?.amountIn) {
         return res.status(502).json({ error: '1Click returned an incomplete committed quote. No payment should be sent.' });
       }
+      // Enforce the deadline requested from 1Click. Never display or accept a
+      // later provider deadline than the ten-minute checkout window requested.
+      const requestedDeadlineMs = Date.parse(request.deadline);
+      const providerDeadlineMs = Date.parse(data.quote.deadline || '');
+      const effectiveDeadlineMs = Number.isFinite(providerDeadlineMs)
+        ? Math.min(providerDeadlineMs, requestedDeadlineMs)
+        : requestedDeadlineMs;
+      data = {
+        ...data,
+        quote: {
+          ...data.quote,
+          deadline: new Date(effectiveDeadlineMs).toISOString()
+        }
+      };
     }
     res.json({ ...data, xoduspay: { origin: input.origin, destination: input.destination } });
   } catch (error) {
