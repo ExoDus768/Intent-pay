@@ -207,7 +207,10 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
   const getSolanaConnection = () => {
     if (!solanaConnectionRef.current) {
       const configured = import.meta.env.VITE_SOLANA_RPC_URL;
+      // Prefer an independent public provider before any project-configured
+      // endpoint: the configured endpoint may be the one returning HTTP 403.
       const endpoints = [...new Set([
+        'https://solana-rpc.publicnode.com',
         configured,
         'https://api.mainnet.solana.com',
         'https://api.mainnet-beta.solana.com',
