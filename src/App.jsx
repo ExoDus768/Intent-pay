@@ -94,6 +94,18 @@ async function nearRpc(payload) {
   }
   throw new Error(lastError?.message || 'All configured NEAR mainnet RPC providers failed.');
 }
+async function readApiResponse(response, label = 'API request') {
+  const raw = await response.text();
+  let data;
+  try {
+    data = raw ? JSON.parse(raw) : {};
+  } catch {
+    const detail = raw.replace(/\\s+/g, ' ').slice(0, 220);
+    throw new Error(label + ' returned a non-JSON response (HTTP ' + response.status + '). ' + (detail || 'The server returned an empty response.'));
+  }
+  return data;
+}
+
 const usdToTokenAtomic = (usdAmount, token) => {
   const usd = Number(usdAmount);
   const price = Number(token?.price);
@@ -1074,7 +1086,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
           slippageTolerance: 100
         })
       });
-      const data = await response.json();
+      const data = await readApiResponse(response, 'NEAR Intents quote');
       if (!response.ok) throw new Error(data.error || 'Quote request failed.');
       if (requestId !== quoteRequestRef.current) return;
       let gas = { kind: 'unavailable', label: 'Wallet estimate unavailable' };
@@ -1167,7 +1179,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
             dry: false
           })
         });
-        const committedData = await committed.json();
+        const committedData = await readApiResponse(committed, 'Payment address creation');
         if (!committed.ok) throw new Error(committedData.error || 'Could not prepare the payment.');
         activeQuote = committedData;
         setQuote(committedData);
