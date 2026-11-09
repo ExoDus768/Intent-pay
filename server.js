@@ -808,28 +808,6 @@ async function nearTransactionHasNativePayout(txHash, recipient, minimumAmount) 
   }
 }
 
-async function verifyNativeNearExplorerPayout(depositAddress) {
-  const query = new URLSearchParams({ search: depositAddress, numberOfTransactions: '10', statuses: 'SUCCESS' });
-  const response = await fetch('https://explorer.near-intents.org/api/v0/transactions?' + query.toString(), {
-    method: 'GET', headers: explorerAuthHeaders(), signal: AbortSignal.timeout(10000)
-  });
-  if (!response.ok) throw new Error('Explorer could not verify the NEAR payout yet.');
-  const raw = await response.text();
-  let rows;
-  try { rows = raw ? JSON.parse(raw) : []; } catch { throw new Error('Explorer returned an unreadable settlement response.'); }
-  if (!Array.isArray(rows)) rows = rows?.transactions || rows?.data || [];
-  const row = rows.find(item => item?.depositAddress === depositAddress &&
-    item?.status === 'SUCCESS' && item?.recipientType === 'DESTINATION_CHAIN' &&
-    String(item?.destinationAsset || '').toLowerCase() === 'nep141:wrap.near');
-  if (!row || !isNearAccount(row.recipient) || !/^\d+$/.test(String(row.amountOut || ''))) return null;
-  const hashes = Array.isArray(row.nearTxHashes) ? row.nearTxHashes : [];
-  for (const hash of hashes) {
-    if (await nearTransactionHasNativePayout(hash, row.recipient, row.amountOut)) {
-      return { verified: true, recipient: row.recipient, amountOut: row.amountOut, txHash: hash };
-    }
-  }
-  return null;
-}
 
 app.get('/api/status', async (req, res) => {
   const { depositAddress, depositMemo } = req.query;
