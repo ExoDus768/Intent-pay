@@ -405,7 +405,9 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
   const origin = useMemo(() => tokens.find(t => tokenId(t) === originAsset), [tokens, originAsset]);
   const sourceWallet = isNearToken(origin || {}) ? nearWallet : isSolanaToken(origin || {}) ? solWallet : wallet;
   const destination = useMemo(() => tokens.find(t => tokenId(t) === destinationAsset), [tokens, destinationAsset]);
-  const customerAccount = isNearToken(origin || {}) ? nearWallet : wallet;
+  // History must be keyed to the wallet that actually funded the payment.
+  // Solana-origin payments use the connected Solana address, not the EVM address.
+  const customerAccount = isNearToken(origin || {}) ? nearWallet : isSolanaToken(origin || {}) ? solWallet : wallet;
 
   const historyStorageKey = customerAccount ? 'xoduspay_customer_history_' + customerAccount.toLowerCase() : '';
   function readLocalCustomerHistory(account) {
