@@ -6,8 +6,8 @@ XoDuspay gives merchants one checkout flow they can share as a hosted link, QR c
 
 ## Start here
 
-- **Public landing page:** https://intent-pay-eta.vercel.app/
-- **Merchant workspace:** https://intent-pay-eta.vercel.app/merchant
+- **Public landing page:** https://xoduspay-exo-c836.vercel.app/
+- **Merchant workspace:** https://xoduspay-exo-c836.vercel.app/merchant
 - **Project on X:** https://x.com/Intent_Payy
 - **Hackathon overview:** [HACKATHON.md](./HACKATHON.md)
 
@@ -78,7 +78,7 @@ XoDuspay uses the official NEAR Intents 1Click mainnet endpoint. NEAR Wallet Sel
 ## Environment variables
 
 - ONECLICK_JWT: server-only 1Click authentication token
-- XODUSPAY_HISTORY_SECRET: optional wallet-history signing secret (the legacy INTENTPAY_HISTORY_SECRET remains supported for existing deployments)
+- XODUSPAY_HISTORY_SECRET: wallet-history signing secret
 - APP_ORIGIN: optional comma-separated allowed browser origins
 - PORT: Express port (defaults to 3001)
 - VITE_WALLETCONNECT_PROJECT_ID: public WalletConnect / Reown project ID used by the browser bundle
@@ -103,9 +103,3 @@ XoDuspay is a hackathon prototype, not an audited payment processor.
 
 Never commit API secrets, wallet private keys or seed phrases. Use your hosting provider's encrypted environment-variable settings. Do not accept customer payments until the full flow has been tested and independently reviewed.
 
-## LI.FI secondary routing
-XoDuspay uses NEAR Intents / 1Click as its primary checkout route. LI.FI is a secondary fallback only for supported EVM-to-EVM payments when 1Click cannot return a valid quote. NEAR-origin and NEAR-destination payments continue through NEAR Intents; LI.FI is not used for those routes.
-
-The fallback requests a live LI.FI quote, asks the customer to approve an ERC-20 allowance when required, submits the quoted EVM transaction from the customer's wallet, and polls LI.FI status for destination settlement. The source-chain transaction alone is never treated as completed payment. LI.FI may also reject small payments when no executable route or sufficient liquidity exists.
-
-An API key is optional for initial integration. To raise rate limits, obtain a free key through the [LI.FI Partner Portal](https://portal.li.fi/) and add it as the server-only `LIFI_API_KEY` environment variable. Never expose it in browser code.
