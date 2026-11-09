@@ -181,7 +181,7 @@ export default function MerchantTools({ open = false, onClose = () => {}, tokens
             <label htmlFor="intentpay-payout-token">Payout token on {destinationChain.toUpperCase()}</label>
             <select id="intentpay-payout-token" value={destinationAsset} onChange={e => setDestinationAsset(e.target.value)} disabled={payoutTokens.length === 0}>
               <option value="">{payoutTokens.length ? 'Choose a payout token' : 'No supported tokens on this network'}</option>
-              {payoutTokens.map(t => <option key={t.assetId} value={t.assetId}>{t.symbol || 'TOKEN'}{t.name ? ' · ' + t.name : ''}</option>)}
+              {payoutTokens.map(t => <option key={t.assetId} value={t.assetId}>{String(t.assetId).toLowerCase() === 'nep141:wrap.near' ? 'NEAR' : (t.symbol || 'TOKEN')}{String(t.assetId).toLowerCase() === 'nep141:wrap.near' ? ' · Native NEAR payout' : (t.name ? ' · ' + t.name : '')}</option>)}
             </select>
             {payoutTokens.length === 0 && <p className="merchant-error">No payout tokens are currently available for this network in the live NEAR Intents registry. Choose another network.</p>}
           </> : <p className="merchant-hint">Choose a payout network first. Only tokens supported on that network will appear here.</p>}
