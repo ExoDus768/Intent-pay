@@ -50,6 +50,15 @@ function authHeaders() {
   return { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.ONECLICK_JWT}` };
 }
 
+function explorerAuthHeaders() {
+  if (!process.env.EXPLORER_JWT) {
+    const error = new Error('The server is missing EXPLORER_JWT. Add an Explorer API JWT with key_type=explorer in Railway variables. ONECLICK_JWT cannot authenticate Explorer requests.');
+    error.status = 503;
+    throw error;
+  }
+  return { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.EXPLORER_JWT}` };
+}
+
 async function oneClick(path, options = {}, authenticated = true) {
   const headers = { 'Content-Type': 'application/json', ...(authenticated ? authHeaders() : {}), ...(options.headers || {}) };
   const response = await fetch(`${API_BASE}${path}`, { ...options, headers });
@@ -601,6 +610,7 @@ app.get('/api/health', (_req, res) => res.json({ ok: true, service: 'xoduspay-ap
 
 app.get('/api/config', (_req, res) => res.json({
   oneClickConfigured: Boolean(process.env.ONECLICK_JWT),
+  explorerConfigured: Boolean(process.env.EXPLORER_JWT),
   provider: '1Click mainnet', network: 'mainnet'
 }));
 
@@ -776,7 +786,7 @@ app.get('/api/transactions/lookup', paymentActionLimiter, async (req, res) => {
   try {
     const query = new URLSearchParams({ search, numberOfTransactions: '10', statuses: 'SUCCESS,FAILED,PROCESSING,REFUNDED,INCOMPLETE_DEPOSIT,PENDING_DEPOSIT' });
     const response = await fetch('https://explorer.near-intents.org/api/v0/transactions?' + query.toString(), {
-      method: 'GET', headers: authHeaders()
+      method: 'GET', headers: explorerAuthHeaders()
     });
     const raw = await response.text();
     let data;
