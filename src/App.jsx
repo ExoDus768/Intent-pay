@@ -176,7 +176,6 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
   const activeSolProviderRef = useRef(null);
   const solanaConnectionRef = useRef(null);
   const walletConnectProviderRef = useRef(null);
-  const sourceWallet = isNearToken(origin || {}) ? nearWallet : isSolanaToken(origin || {}) ? solWallet : wallet;
   const getSolanaConnection = () => {
     if (!solanaConnectionRef.current) {
       const endpoint = import.meta.env.VITE_SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com';
@@ -335,6 +334,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
   }, []);
 
   const origin = useMemo(() => tokens.find(t => tokenId(t) === originAsset), [tokens, originAsset]);
+  const sourceWallet = isNearToken(origin || {}) ? nearWallet : isSolanaToken(origin || {}) ? solWallet : wallet;
   const destination = useMemo(() => tokens.find(t => tokenId(t) === destinationAsset), [tokens, destinationAsset]);
   const customerAccount = isNearToken(origin || {}) ? nearWallet : wallet;
 
@@ -976,7 +976,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
       clearTimeout(timer);
       quoteRequestRef.current += 1;
     };
-  }, [configured, originAsset, destinationAsset, amount, recipient, wallet, nearWallet, tokens]);
+  }, [configured, originAsset, destinationAsset, amount, recipient, wallet, nearWallet, solWallet, tokens]);
 
   async function sendDeposit() {
     if (!quote?.quote || !origin) return;
