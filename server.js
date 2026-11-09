@@ -763,6 +763,74 @@ app.post('/api/deposit/submit', paymentActionLimiter, async (req, res) => {
   } catch (error) { res.status(error.status || 502).json({ error: error.message }); }
 });
 
+
+async function nearTransactionHasNativePayout(txHash, recipient, minimumAmount) {
+  if (typeof txHash !== 'string' || !/^[1-9A-HJ-NP-Za-km-z]{32,64}$/.test(txHash) ||
+      !isNearAccount(recipient) || !/^\d+$/.test(String(minimumAmount || ''))) return false;
+  try {
+    const response = await fetch('https://rpc.mainnet.near.org', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0', id: 'xoduspay-settlement-check', method: 'EXPERIMENTAL_tx_status',
+        params: { tx_hash: txHash, sender_account_id: 'intents.near', wait_until: 'FINAL' }
+      }),
+      signal: AbortSignal.timeout(10000)
+    });
+    if (!response.ok) return false;
+    const payload = await response.json();
+    const result = payload?.result;
+    if (payload?.error || !result || !result.status || !result.transaction) return false;
+    const txSucceeded = Boolean(result.status.SuccessValue !== undefined || result.status.SuccessReceiptId);
+    if (!txSucceeded) return false;
+    const transfers = [];
+    const inspectActions = (receiverId, actions, succeeded) => {
+      if (!succeeded || receiverId !== recipient || !Array.isArray(actions)) return;
+      for (const action of actions) {
+        const raw = action?.Transfer?.deposit ?? action?.transfer?.deposit;
+        if (raw !== undefined && /^\d+$/.test(String(raw))) transfers.push(BigInt(raw));
+      }
+    };
+    const top = result.transaction;
+    inspectActions(top.receiver_id, top.actions, txSucceeded);
+    for (const item of result.receipts_outcome || []) {
+      const receipt = item?.receipt;
+      const status = item?.outcome?.status || {};
+      const succeeded = status.SuccessValue !== undefined || Boolean(status.SuccessReceiptId);
+      const actions = receipt?.Action?.actions || receipt?.action?.actions;
+      inspectActions(receipt?.receiver_id, actions, succeeded);
+    }
+    const required = BigInt(minimumAmount);
+    return transfers.some(amount => amount >= required);
+  } catch (error) {
+    console.error('[Settlement] NEAR RPC verification unavailable', { txHash, message: String(error?.message || error).slice(0, 240) });
+    return false;
+  }
+}
+
+async function verifyNativeNearExplorerPayout(depositAddress) {
+  const query = new URLSearchParams({ search: depositAddress, numberOfTransactions: '10', statuses: 'SUCCESS' });
+  const response = await fetch('https://explorer.near-intents.org/api/v0/transactions?' + query.toString(), {
+    method: 'GET', headers: explorerAuthHeaders(), signal: AbortSignal.timeout(10000)
+  });
+  if (!response.ok) throw new Error('Explorer could not verify the NEAR payout yet.');
+  const raw = await response.text();
+  let rows;
+  try { rows = raw ? JSON.parse(raw) : []; } catch { throw new Error('Explorer returned an unreadable settlement response.'); }
+  if (!Array.isArray(rows)) rows = rows?.transactions || rows?.data || [];
+  const row = rows.find(item => item?.depositAddress === depositAddress &&
+    item?.status === 'SUCCESS' && item?.recipientType === 'DESTINATION_CHAIN' &&
+    String(item?.destinationAsset || '').toLowerCase() === 'nep141:wrap.near');
+  if (!row || !isNearAccount(row.recipient) || !/^\d+$/.test(String(row.amountOut || ''))) return null;
+  const hashes = Array.isArray(row.nearTxHashes) ? row.nearTxHashes : [];
+  for (const hash of hashes) {
+    if (await nearTransactionHasNativePayout(hash, row.recipient, row.amountOut)) {
+      return { verified: true, recipient: row.recipient, amountOut: row.amountOut, txHash: hash };
+    }
+  }
+  return null;
+}
+
 app.get('/api/status', async (req, res) => {
   const { depositAddress, depositMemo } = req.query;
   if (typeof depositAddress !== 'string' || depositAddress.length < 5 || depositAddress.length > 160) {
@@ -772,7 +840,31 @@ app.get('/api/status', async (req, res) => {
     const query = new URLSearchParams({ depositAddress });
     if (typeof depositMemo === 'string' && depositMemo) query.set('depositMemo', depositMemo);
     const data = await oneClick(`/status?${query.toString()}`, { method: 'GET' });
-    res.json({ ...data, terminal: TERMINAL.has(data.status) });
+    const nativeNearPayout = String(data?.quote?.destinationAsset || data?.destinationAsset || '').toLowerCase() === 'nep141:wrap.near' &&
+      String(data?.quote?.recipientType || data?.recipientType || 'DESTINATION_CHAIN') === 'DESTINATION_CHAIN';
+    if (data.status === 'SUCCESS' && nativeNearPayout) {
+      try {
+        const settlement = await verifyNativeNearExplorerPayout(depositAddress);
+        if (!settlement?.verified) {
+          return res.json({
+            ...data, status: 'PROCESSING', terminal: false, settlementVerified: false,
+            settlementMessage: 'NEAR Intents reports execution, but XoDuspay has not independently verified the native NEAR transfer to the merchant yet.'
+          });
+        }
+        return res.json({
+          ...data, status: 'SUCCESS', terminal: true, settlementVerified: true,
+          settlementRecipient: settlement.recipient, settlementAmount: settlement.amountOut,
+          settlementTxHash: settlement.txHash
+        });
+      } catch (verificationError) {
+        console.error('[Settlement] native NEAR verification deferred', { message: String(verificationError?.message || verificationError).slice(0, 240) });
+        return res.json({
+          ...data, status: 'PROCESSING', terminal: false, settlementVerified: false,
+          settlementMessage: 'Waiting for independent native NEAR payout verification.'
+        });
+      }
+    }
+    res.json({ ...data, terminal: TERMINAL.has(data.status), settlementVerified: data.status === 'SUCCESS' });
   } catch (error) { res.status(error.status || 502).json({ error: error.message }); }
 });
 
