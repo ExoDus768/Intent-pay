@@ -35,7 +35,7 @@ const tokenChain = t => normalizeBlockchain(t?.blockchain, t?.assetId);
 const isNearToken = t => tokenChain(t) === 'near';
 const isSolanaToken = t => tokenChain(t) === 'solana';
 const tokenId = t => t.assetId || '';
-const displayTokenSymbol = t => String(t?.assetId || '').toLowerCase() === 'nep141:wrap.near' ? 'NEAR (native)' : (t?.symbol || 'TOKEN');
+const displayTokenSymbol = t => t?.symbol || 'TOKEN';
 const tokenName = t => `${displayTokenSymbol(t)} · ${t.blockchain || 'Unknown chain'}`;
 const chainLabel = value => ({eth:'Ethereum',arb:'Arbitrum',op:'Optimism',avax:'Avalanche',bera:'Berachain'}[value] || String(value || '').split(/[-_ ]+/).map(x => x.charAt(0).toUpperCase() + x.slice(1)).join(' '));
 const normalizeBlockchain = (value, assetId = '') => {
@@ -56,8 +56,8 @@ const normalizeBlockchain = (value, assetId = '') => {
   if (oneCs) return aliases[oneCs] || oneCs;
   return null;
 };
-const TOKEN_PRIORITY = ['USDC','USDT','NEAR','WNEAR','ETH','DAI','WETH','WBTC','USDBC','USDE','FRAX','USDS'];
-const tokenPriority = t => String(t?.assetId || '').toLowerCase() === 'nep141:wrap.near' ? 2 : (() => { const i = TOKEN_PRIORITY.indexOf(String(t.symbol || '').toUpperCase()); return i < 0 ? TOKEN_PRIORITY.length : i; })();
+const TOKEN_PRIORITY = ['USDC','USDT','WNEAR','ETH','DAI','WETH','WBTC','USDBC','USDE','FRAX','USDS'];
+const tokenPriority = t => { const i = TOKEN_PRIORITY.indexOf(String(t.symbol || '').toUpperCase()); return i < 0 ? TOKEN_PRIORITY.length : i; };
 const normalizeToken = token => {
   if (!token || typeof token !== 'object' || !token.assetId) return null;
   const blockchain = normalizeBlockchain(token.blockchain, token.assetId);
@@ -430,19 +430,6 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
     setCustomerHistory(readLocalCustomerHistory(customerAccount));
   }, [historyStorageKey]);
 
-  function normalizeHistoryRow(row) {
-    if (!row || typeof row !== 'object') return row;
-    const destinationNetwork = String(row.destinationNetwork || '').trim().toLowerCase();
-    const destinationAsset = String(row.destinationAsset || '').trim().toLowerCase();
-    const legacyNearLabel = destinationNetwork === 'near' && !destinationAsset &&
-      String(row.destinationToken || '').trim().toUpperCase() === 'WNEAR';
-    const nativeNear = destinationNetwork === 'near' &&
-      (String(row.payoutKind || '').toUpperCase() === 'NATIVE_NEAR' || destinationAsset === 'nep141:wrap.near' || legacyNearLabel);
-    return nativeNear ? {
-      ...row, destinationAsset: 'nep141:wrap.near',
-      payoutKind: 'NATIVE_NEAR', destinationToken: 'NEAR (native)'
-    } : row;
-  }
   function mergeHistoryRows(...groups) {
     const byId = new Map();
     for (const rawRow of groups.flat()) {
@@ -554,7 +541,6 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
       sourceToken: displayTokenSymbol(origin),
       destinationNetwork: chainLabel(tokenChain(destination)),
       destinationAsset: destination.assetId || '',
-      payoutKind: paymentQuote?.xoduspay?.payoutKind || (String(destination.assetId || '').toLowerCase() === 'nep141:wrap.near' ? 'NATIVE_NEAR' : 'TOKEN'),
       destinationToken: displayTokenSymbol(destination),
       amountPaid: paymentQuote.quote.amountInFormatted || (paymentQuote.quote.amountIn != null ? formatUnits(paymentQuote.quote.amountIn, Number(origin.decimals || 0)) : ''),
       amountReceived: paymentQuote.quote.amountOutFormatted || (paymentQuote.quote.amountOut != null ? formatUnits(paymentQuote.quote.amountOut, Number(destination.decimals || 0)) : ''),
@@ -620,7 +606,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
     'mantle', 'mode', 'blast', 'celo', 'worldchain'
   ]);
   const destinationChains = useMemo(() => [...new Set(destinations.map(tokenChain).filter(chain => supportedPayoutChains.has(chain)))].sort((a, b) => chainLabel(a).localeCompare(chainLabel(b))), [destinations]);
-  const destinationTokens = useMemo(() => destinations.filter(t => tokenChain(t) === destinationChain && (destinationChain !== 'near' || String(t.symbol || '').toUpperCase() !== 'WNEAR' || String(t.assetId || '').toLowerCase() === 'nep141:wrap.near')).sort((a, b) => tokenPriority(a) - tokenPriority(b) || String(a.symbol || '').localeCompare(String(b.symbol || ''))), [destinations, destinationChain]);
+  const destinationTokens = useMemo(() => destinations.filter(t => tokenChain(t) === destinationChain && (destinationChain !== 'near' || String(t.symbol || '').toUpperCase() !== 'NEAR')).sort((a, b) => tokenPriority(a) - tokenPriority(b) || String(a.symbol || '').localeCompare(String(b.symbol || ''))), [destinations, destinationChain]);
   useEffect(() => {
     let cancelled = false;
     async function scanWalletTokens() {
@@ -1505,7 +1491,6 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
         <div className="quote-title">Mainnet quote details</div>{isWidgetCheckout && <><div className="quote-row"><span>Merchant</span><strong>{merchantNameParam}</strong></div><div className="quote-row"><span>Purpose of payment</span><strong>{merchantPurposeParam}</strong></div></>}{fixedOutputCheckout && <p className="helper-text">Fixed USD checkout · target price ${Number(amount).toFixed(2)} USD. NEAR Intents calculates the input amount required to deliver the merchant's selected payout token at this value.</p>}
         <div className="quote-row"><span>Pay</span><strong>{quote.quote.amountInFormatted || formatUnits(quote.quote.amountIn, Number(origin?.decimals || 0))} {displayTokenSymbol(origin || {})}</strong></div>
         <div className="quote-row"><span>Estimated receive</span><strong>{(quote.quote.amountOutFormatted || quote.quote.amountOut) + ' ' + displayTokenSymbol(destination || {})}</strong></div>
-        {quote.xoduspay?.payoutKind === 'NATIVE_NEAR' && <p className="helper-text">Native NEAR payout: 1Click unwraps its internal wNEAR representation before sending NEAR to the merchant account.</p>}
         {quote.quote.amountInUsd && <div className="quote-row"><span>Payment value</span><strong>${Number(quote.quote.amountInUsd).toFixed(4)} USD</strong></div>}
         <div className="quote-row"><span>Network gas (paid separately)</span><strong>{gasEstimate?.kind === 'evm' ? '~' + Number(gasEstimate.amount).toPrecision(5) + ' ' + gasEstimate.symbol : gasEstimate?.label || 'Estimate unavailable'}</strong></div>
         {gasEstimate?.kind === 'evm' && <p className="helper-text">{gasEstimate.label}. The final fee can change before confirmation; your wallet shows the amount to approve.</p>}
