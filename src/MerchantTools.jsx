@@ -110,8 +110,9 @@ export default function MerchantTools({ open = false, onClose = () => {}, tokens
     });
     return window.location.origin + '/checkout?' + params.toString();
   }, [ready, destinationAsset, recipient, merchantName, paymentPurpose, mode, fixedAmount]);
+  const escapeHtml = value => String(value || '').replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
   const embed = config
-    ? '<button type="button" data-intentpay-checkout data-intentpay-url="' + config + '">' + buttonLabel.trim() + '</button>\n<script src="' + window.location.origin + '/intentpay.js" defer></script>'
+    ? '<button type="button" data-xoduspay-checkout data-xoduspay-url="' + escapeHtml(config) + '" style="display:inline-flex;align-items:center;gap:10px;padding:13px 22px;border:0;border-radius:12px;background:#b9f36b;color:#101a10;font:600 15px system-ui,sans-serif;cursor:pointer;">' + escapeHtml(buttonLabel.trim() || 'Pay with crypto') + '</button>\n<script src="' + window.location.origin + '/xoduspay.js" defer></script>'
     : '';
 
   useEffect(() => {
