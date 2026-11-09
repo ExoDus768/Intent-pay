@@ -73,6 +73,7 @@ async function oneClick(path, options = {}, authenticated = true) {
     const error = new Error(userMessage);
     error.status = 502;
     error.upstreamStatus = response.status;
+    error.providerMessage = providerMessage;
     error.retryable = [429, 502, 503, 504].includes(response.status);
     const retryAfter = Number(response.headers.get('retry-after'));
     error.retryAfterMs = Number.isFinite(retryAfter) && retryAfter > 0 ? Math.min(retryAfter * 1000, 5000) : 900;
@@ -129,6 +130,17 @@ function isNearAccount(value) {
 
 function getToken(tokens, assetId) {
   return tokens.find(token => token.assetId === assetId);
+}
+
+function formatAtomicAmount(value, decimals) {
+  const raw = String(value);
+  const precision = Number(decimals);
+  if (!/^\\d+$/.test(raw) || !Number.isInteger(precision) || precision < 0 || precision > 255) return null;
+  if (precision === 0) return raw;
+  const padded = raw.padStart(precision + 1, '0');
+  const whole = padded.slice(0, -precision);
+  const fraction = padded.slice(-precision).replace(/0+$/, '');
+  return fraction ? whole + '.' + fraction : whole;
 }
 
 const EVM_BLOCKCHAINS = new Set([
@@ -651,6 +663,63 @@ app.post('/api/quote', quoteLimiter, async (req, res) => {
     }
     res.json({ ...data, xoduspay: { origin: input.origin, destination: input.destination } });
   } catch (error) {
+    const bridgeMinimum = String(error.providerMessage || '').match(/(?:try\\s+at\\s+least|minimum(?:\\s+amount)?(?:\\s+is)?\\s*[:=]?)\\s*([0-9]+)/i);
+    if (bridgeMinimum) {
+      const minimumAtomic = bridgeMinimum[1];
+      const amountToken = input.swapType === 'EXACT_OUTPUT' ? input.destination : input.origin;
+      const formattedMinimum = formatAtomicAmount(minimumAtomic, amountToken.decimals);
+      const usdValue = Number(amountToken.price) > 0
+        ? Number(minimumAtomic) / (10 ** Number(amountToken.decimals)) * Number(amountToken.price)
+        : null;
+      const minimumLabel = formattedMinimum
+        ? formattedMinimum + ' ' + amountToken.symbol
+        : minimumAtomic + ' base units';
+      const usdLabel = Number.isFinite(usdValue) && usdValue > 0 ? ' (approximately , paymentActionLimiter, async (req, res) => {
+  const { txHash, depositAddress, depositMemo, nearSenderAccount } = req.body || {};
+  if (typeof txHash !== 'string' || txHash.length < 10 || txHash.length > 160 ||
+      typeof depositAddress !== 'string' || depositAddress.length < 5 || depositAddress.length > 160) {
+    return res.status(400).json({ error: 'A valid txHash and depositAddress are required.' });
+  }
+  try {
+    const payload = { txHash, depositAddress };
+    if (nearSenderAccount) {
+      if (!isNearAccount(nearSenderAccount)) return res.status(400).json({ error: 'nearSenderAccount is not a valid NEAR account ID.' });
+      payload.nearSenderAccount = nearSenderAccount;
+    }
+    if (depositMemo) payload.memo = String(depositMemo);
+    const data = await oneClick('/deposit/submit', { method: 'POST', body: JSON.stringify(payload) });
+    res.json(data);
+  } catch (error) { res.status(error.status || 502).json({ error: error.message }); }
+});
+
+app.get('/api/status', async (req, res) => {
+  const { depositAddress, depositMemo } = req.query;
+  if (typeof depositAddress !== 'string' || depositAddress.length < 5 || depositAddress.length > 160) {
+    return res.status(400).json({ error: 'depositAddress is required.' });
+  }
+  try {
+    const query = new URLSearchParams({ depositAddress });
+    if (typeof depositMemo === 'string' && depositMemo) query.set('depositMemo', depositMemo);
+    const data = await oneClick(`/status?${query.toString()}`, { method: 'GET' });
+    res.json({ ...data, terminal: TERMINAL.has(data.status) });
+  } catch (error) { res.status(error.status || 502).json({ error: error.message }); }
+});
+
+if (!process.env.VERCEL) app.listen(PORT, () => console.log(`XoDuspay API listening on :${PORT}`));
+
+export default app;
+ + usdValue.toFixed(4) + ' USD)' : '';
+      return res.status(400).json({
+        error: 'This NEAR Intents route requires at least ' + minimumLabel + usdLabel + '. This is a bridge/solver minimum for the selected route, not a XoDuspay-wide minimum. No deposit address was created. Try a higher amount or another supported route.',
+        minimumAmount: minimumAtomic,
+        minimumFormatted: formattedMinimum,
+        minimumUsd: usdValue,
+        minimumAsset: amountToken.assetId,
+        minimumSymbol: amountToken.symbol,
+        minimumDecimals: amountToken.decimals,
+        routeMinimum: true
+      });
+    }
     res.status(error.status || 502).json({ error: error.message });
   }
 });
