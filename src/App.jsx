@@ -430,9 +430,23 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
     setCustomerHistory(readLocalCustomerHistory(customerAccount));
   }, [historyStorageKey]);
 
+  function normalizeHistoryRow(row) {
+    if (!row || typeof row !== 'object') return row;
+    const destinationNetwork = String(row.destinationNetwork || '').trim().toLowerCase();
+    const destinationAsset = String(row.destinationAsset || '').trim().toLowerCase();
+    const legacyNearLabel = destinationNetwork === 'near' && !destinationAsset &&
+      String(row.destinationToken || '').trim().toUpperCase() === 'WNEAR';
+    const nativeNear = String(row.payoutKind || '').toUpperCase() === 'NATIVE_NEAR' ||
+      (destinationNetwork === 'near' && (destinationAsset === 'nep141:wrap.near' || legacyNearLabel));
+    return nativeNear ? {
+      ...row, destinationAsset: 'nep141:wrap.near',
+      payoutKind: 'NATIVE_NEAR', destinationToken: 'NEAR (native)'
+    } : row;
+  }
   function mergeHistoryRows(...groups) {
     const byId = new Map();
-    for (const row of groups.flat()) {
+    for (const rawRow of groups.flat()) {
+      const row = normalizeHistoryRow(rawRow);
       if (!row?.id) continue;
       const previous = byId.get(row.id);
       byId.set(row.id, previous ? { ...previous, ...row,
@@ -539,6 +553,8 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
       sourceNetwork: chainLabel(tokenChain(origin)),
       sourceToken: origin.symbol || 'TOKEN',
       destinationNetwork: chainLabel(tokenChain(destination)),
+      destinationAsset: destination.assetId || '',
+      payoutKind: paymentQuote?.xoduspay?.payoutKind || (String(destination.assetId || '').toLowerCase() === 'nep141:wrap.near' ? 'NATIVE_NEAR' : 'TOKEN'),
       destinationToken: displayTokenSymbol(destination),
       amountPaid: paymentQuote.quote.amountInFormatted || (paymentQuote.quote.amountIn != null ? formatUnits(paymentQuote.quote.amountIn, Number(origin.decimals || 0)) : ''),
       amountReceived: paymentQuote.quote.amountOutFormatted || (paymentQuote.quote.amountOut != null ? formatUnits(paymentQuote.quote.amountOut, Number(destination.decimals || 0)) : ''),
