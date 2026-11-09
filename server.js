@@ -378,9 +378,9 @@ function cleanHistoryEntries(entries) {
     const destinationAsset = String(item.destinationAsset || '').slice(0, 180);
     const legacyNearLabel = destinationNetwork.trim().toLowerCase() === 'near' &&
       !destinationAsset && String(item.destinationToken || '').trim().toUpperCase() === 'WNEAR';
-    const nativeNear = String(item.payoutKind || '').toUpperCase() === 'NATIVE_NEAR' ||
-      (destinationNetwork.trim().toLowerCase() === 'near' &&
-        (destinationAsset.toLowerCase() === 'nep141:wrap.near' || legacyNearLabel));
+    const nativeNear = destinationNetwork.trim().toLowerCase() === 'near' &&
+      (String(item.payoutKind || '').toUpperCase() === 'NATIVE_NEAR' ||
+        destinationAsset.toLowerCase() === 'nep141:wrap.near' || legacyNearLabel);
     return {
       id: item.id,
       merchant: String(item.merchant || 'Merchant payment').slice(0, 100),
