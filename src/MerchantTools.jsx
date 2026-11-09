@@ -25,9 +25,10 @@ export default function MerchantTools({ open = false, onClose = () => {}, tokens
       matic: 'polygon', pol: 'polygon', ftm: 'fantom', bera: 'berachain',
       sol: 'solana', xdai: 'gnosis'
     };
+    if (String(arguments[1] || '').toLowerCase() === 'nep141:wrap.near') return 'near';
     return aliases[raw] || raw;
   };
-  const chainOf = t => normalizeChain(t?.blockchain);
+  const chainOf = t => String(t?.assetId || '').toLowerCase() === 'nep141:wrap.near' ? 'near' : normalizeChain(t?.blockchain);
   // Only expose payout networks whose recipient format is validated by the backend.
   // BTC and ZEC remain in the raw API registry, but are not payout choices yet.
   const validatedPayoutChains = new Set([
