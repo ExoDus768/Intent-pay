@@ -634,10 +634,19 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
           const accountArgs = btoa(JSON.stringify({ account_id: account }));
           for (const token of originTokens) {
             if (cancelled) return;
-            const contractId = token.contractAddress || String(token.assetId || '').replace(/^nep141:/, '');
-            if (!contractId) continue;
-            const data = await nearRpc({ jsonrpc: '2.0', id: 'xoduspay-wallet-scan', method: 'query', params: { request_type: 'call_function', finality: 'final', account_id: contractId, method_name: 'ft_balance_of', args_base64: accountArgs } });
-            const raw = JSON.parse(new TextDecoder().decode(new Uint8Array(data.result.result)));
+            const isNativeNear = String(token.assetId || '').toLowerCase() === 'nep141:wrap.near';
+            let raw;
+            if (isNativeNear) {
+              // NEAR Intents represents NEAR with nep141:wrap.near, but a NEAR
+              // wallet holds native NEAR. Read the account balance, not ft_balance_of.
+              const data = await nearRpc({ jsonrpc: '2.0', id: 'xoduspay-wallet-scan', method: 'query', params: { request_type: 'view_account', finality: 'final', account_id: account } });
+              raw = data.result.amount;
+            } else {
+              const contractId = token.contractAddress || String(token.assetId || '').replace(/^nep141:/, '');
+              if (!contractId) continue;
+              const data = await nearRpc({ jsonrpc: '2.0', id: 'xoduspay-wallet-scan', method: 'query', params: { request_type: 'call_function', finality: 'final', account_id: contractId, method_name: 'ft_balance_of', args_base64: accountArgs } });
+              raw = JSON.parse(new TextDecoder().decode(new Uint8Array(data.result.result)));
+            }
             const formatted = Number(formatUnits(String(raw), Number(token.decimals || 0)));
             if (Number.isFinite(formatted) && formatted > 0) found[token.assetId] = formatted;
           }
@@ -713,17 +722,20 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
       try {
         let rawBalance;
         if (nearSource) {
-          const contractId = origin.contractAddress || String(origin.assetId || '').replace(/^nep141:/, '');
-          if (contractId) {
+          const isNativeNear = String(origin.assetId || '').toLowerCase() === 'nep141:wrap.near';
+          if (isNativeNear) {
+            // Display the payer's native NEAR balance for the NEAR Intents WNEAR asset.
+            const data = await nearRpc({ jsonrpc: '2.0', id: 'xoduspay-balance', method: 'query', params: { request_type: 'view_account', finality: 'final', account_id: account } });
+            rawBalance = data.result.amount;
+          } else {
+            const contractId = origin.contractAddress || String(origin.assetId || '').replace(/^nep141:/, '');
+            if (!contractId) throw new Error('The selected NEAR token has no contract address.');
             const args = btoa(JSON.stringify({ account_id: account }));
             const data = await nearRpc({
               jsonrpc: '2.0', id: 'xoduspay-balance', method: 'query',
               params: { request_type: 'call_function', finality: 'final', account_id: contractId, method_name: 'ft_balance_of', args_base64: args }
             });
             rawBalance = JSON.parse(new TextDecoder().decode(new Uint8Array(data.result.result)));
-          } else {
-            const data = await nearRpc({ jsonrpc: '2.0', id: 'xoduspay-balance', method: 'query', params: { request_type: 'view_account', finality: 'final', account_id: account } });
-            rawBalance = data.result.amount;
           }
         } else if (solanaSource) {
           const connection = getSolanaConnection();
