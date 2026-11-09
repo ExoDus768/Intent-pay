@@ -208,7 +208,9 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
     if (!solanaConnectionRef.current) {
       // Send Solana RPC through our same-origin backend proxy. This avoids
       // browser-origin/IP restrictions on public RPC endpoints and centralizes failover.
-      const connections = [new Connection('/api/solana/rpc', 'confirmed')];
+      const rpcEndpoint = new URL('/api/solana/rpc', window.location.origin).toString();
+      const connections = [new Connection(rpcEndpoint, 'confirmed')];
+      let activeIndex = 0;
       const activeConnection = () => connections[activeIndex];
       // Keep the standard web3.js Connection interface, but retry failed RPC
       // methods against public mainnet providers when one endpoint blocks traffic.
