@@ -373,23 +373,34 @@ function cleanHistoryEntries(entries) {
     error.status = 400;
     throw error;
   }
-  return entries.slice(0, 100).filter(item => item && typeof item.id === 'string' && item.id.length <= 180).map(item => ({
-    id: item.id,
-    merchant: String(item.merchant || 'Merchant payment').slice(0, 100),
-    purpose: String(item.purpose || '').slice(0, 160),
-    sourceNetwork: String(item.sourceNetwork || '').slice(0, 60),
-    sourceToken: String(item.sourceToken || '').slice(0, 30),
-    destinationNetwork: String(item.destinationNetwork || '').slice(0, 60),
-    destinationToken: String(item.destinationToken || '').slice(0, 30),
-    amountPaid: String(item.amountPaid || '').slice(0, 80),
-    amountReceived: String(item.amountReceived || '').slice(0, 80),
-    transactionHash: String(item.transactionHash || '').slice(0, 180),
-    depositAddress: String(item.depositAddress || '').slice(0, 180),
-    status: String(item.status || 'PROCESSING').slice(0, 40),
-    fixedAmount: Boolean(item.fixedAmount),
-    createdAt: normalizeHistoryDate(item.createdAt, new Date().toISOString()),
-    updatedAt: normalizeHistoryDate(item.updatedAt, new Date().toISOString())
-  }));
+  return entries.slice(0, 100).filter(item => item && typeof item.id === 'string' && item.id.length <= 180).map(item => {
+    const destinationNetwork = String(item.destinationNetwork || '').slice(0, 60);
+    const destinationAsset = String(item.destinationAsset || '').slice(0, 180);
+    const legacyNearLabel = destinationNetwork.trim().toLowerCase() === 'near' &&
+      !destinationAsset && String(item.destinationToken || '').trim().toUpperCase() === 'WNEAR';
+    const nativeNear = String(item.payoutKind || '').toUpperCase() === 'NATIVE_NEAR' ||
+      (destinationNetwork.trim().toLowerCase() === 'near' &&
+        (destinationAsset.toLowerCase() === 'nep141:wrap.near' || legacyNearLabel));
+    return {
+      id: item.id,
+      merchant: String(item.merchant || 'Merchant payment').slice(0, 100),
+      purpose: String(item.purpose || '').slice(0, 160),
+      sourceNetwork: String(item.sourceNetwork || '').slice(0, 60),
+      sourceToken: String(item.sourceToken || '').slice(0, 30),
+      destinationNetwork,
+      destinationAsset: nativeNear ? 'nep141:wrap.near' : destinationAsset,
+      payoutKind: nativeNear ? 'NATIVE_NEAR' : String(item.payoutKind || 'TOKEN').slice(0, 40),
+      destinationToken: nativeNear ? 'NEAR (native)' : String(item.destinationToken || '').slice(0, 30),
+      amountPaid: String(item.amountPaid || '').slice(0, 80),
+      amountReceived: String(item.amountReceived || '').slice(0, 80),
+      transactionHash: String(item.transactionHash || '').slice(0, 180),
+      depositAddress: String(item.depositAddress || '').slice(0, 180),
+      status: String(item.status || 'PROCESSING').slice(0, 40),
+      fixedAmount: Boolean(item.fixedAmount),
+      createdAt: normalizeHistoryDate(item.createdAt, new Date().toISOString()),
+      updatedAt: normalizeHistoryDate(item.updatedAt, new Date().toISOString())
+    };
+  });
 }
 async function readWalletHistorySnapshot(wallet) {
   const pathname = 'customer-history/' + historyWalletKey(wallet) + '.json';
