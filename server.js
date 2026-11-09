@@ -775,7 +775,7 @@ app.get('/api/transactions/lookup', paymentActionLimiter, async (req, res) => {
   }
   try {
     const query = new URLSearchParams({ search, numberOfTransactions: '10', statuses: 'SUCCESS,FAILED,PROCESSING,REFUNDED,INCOMPLETE_DEPOSIT,PENDING_DEPOSIT' });
-    const response = await fetch('https://1click.chaindefuser.com/api/v0/transactions?' + query.toString(), {
+    const response = await fetch('https://explorer.near-intents.org/api/v0/transactions?' + query.toString(), {
       method: 'GET', headers: authHeaders()
     });
     const raw = await response.text();
