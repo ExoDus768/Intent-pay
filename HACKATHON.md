@@ -54,10 +54,6 @@ For a public demo, use a small amount and independently verify every wallet prom
 
 See [README.md](./README.md) and [docs/checkout-widget.md](./docs/checkout-widget.md) for setup and integration notes.
 
-## Small-payment fallback
-
-If a 1Click route cannot quote a small EVM payment, checkout may offer a direct transfer only when the customer and merchant use the exact same ERC-20 token on the exact same EVM network. The backend checks the transaction on-chain (sender, token contract, recipient, exact amount, successful receipt and confirmations) before the UI records success. This fallback does not convert assets or bridge between chains; cross-chain payments remain a NEAR Intents / 1Click flow.
-
 ## Test status (mainnet)
 
 - EVM wallet connection: user-tested successfully.
