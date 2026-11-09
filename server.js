@@ -94,6 +94,7 @@ const normalizeBlockchain = (value, assetId = '') => {
   };
   if (raw) return aliases[raw] || raw;
   const id = String(assetId || '');
+  if (id.toLowerCase() === 'nep141:wrap.near') return 'near';
   const nep = id.match(/^nep141:([a-z0-9]+)-/i)?.[1]?.toLowerCase();
   if (nep) return aliases[nep] || nep;
   const oneCs = id.match(/^1cs_v1:([^:]+):/i)?.[1]?.toLowerCase();
@@ -603,6 +604,12 @@ app.post('/api/quote', quoteLimiter, async (req, res) => {
   try {
     const tokens = await getTokens();
     input = validateQuoteBody(req.body, tokens);
+    const isNativeNearPayout = input.destination.blockchain === 'near' &&
+      String(input.destination.assetId).toLowerCase() === 'nep141:wrap.near';
+    if (input.destination.blockchain === 'near' && !isNativeNearPayout &&
+        String(input.destination.symbol || '').toUpperCase() === 'WNEAR') {
+      return res.status(400).json({ error: 'NEAR Intents lists this as a wrapped NEAR token, not the native NEAR payout asset. Select the canonical NEAR payout option.' });
+    }
     const request = {
       dry: req.body?.dry === true,
       swapType: input.swapType,
@@ -663,7 +670,25 @@ app.post('/api/quote', quoteLimiter, async (req, res) => {
         }
       };
     }
-    res.json({ ...data, xoduspay: { origin: input.origin, destination: input.destination } });
+    // For nep141:wrap.near paid to the NEAR destination chain, 1Click unwraps
+    // the Intents balance and delivers native NEAR (not a wrap.near FT transfer).
+    // Keep the API asset id intact; this metadata describes settlement semantics.
+    if (isNativeNearPayout && data?.quote?.recipientType && data.quote.recipientType !== 'DESTINATION_CHAIN') {
+      return res.status(502).json({ error: '1Click returned a non-chain recipient for the requested native NEAR payout. Do not send this payment.' });
+    }
+    if (isNativeNearPayout && data?.quote?.destinationAsset &&
+        String(data.quote.destinationAsset).toLowerCase() !== 'nep141:wrap.near') {
+      return res.status(502).json({ error: '1Click returned a different payout asset than the requested native NEAR route. Do not send this payment.' });
+    }
+    res.json({
+      ...data,
+      xoduspay: {
+        origin: input.origin,
+        destination: input.destination,
+        payoutKind: isNativeNearPayout ? 'NATIVE_NEAR' : 'TOKEN',
+        payoutSymbol: isNativeNearPayout ? 'NEAR' : input.destination.symbol
+      }
+    });
   } catch (error) {
     const bridgeMinimum = String(error.providerMessage || '').match(/(?:try\s+at\s+least|minimum(?:\s+amount)?(?:\s+is)?\s*[:=]?)\s*([0-9]+)/i);
     if (bridgeMinimum && input) {
