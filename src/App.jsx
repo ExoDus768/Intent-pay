@@ -436,8 +436,8 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
     const destinationAsset = String(row.destinationAsset || '').trim().toLowerCase();
     const legacyNearLabel = destinationNetwork === 'near' && !destinationAsset &&
       String(row.destinationToken || '').trim().toUpperCase() === 'WNEAR';
-    const nativeNear = String(row.payoutKind || '').toUpperCase() === 'NATIVE_NEAR' ||
-      (destinationNetwork === 'near' && (destinationAsset === 'nep141:wrap.near' || legacyNearLabel));
+    const nativeNear = destinationNetwork === 'near' &&
+      (String(row.payoutKind || '').toUpperCase() === 'NATIVE_NEAR' || destinationAsset === 'nep141:wrap.near' || legacyNearLabel);
     return nativeNear ? {
       ...row, destinationAsset: 'nep141:wrap.near',
       payoutKind: 'NATIVE_NEAR', destinationToken: 'NEAR (native)'
@@ -551,7 +551,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
       merchant: merchantNameParam || 'Merchant payment',
       purpose: merchantPurposeParam,
       sourceNetwork: chainLabel(tokenChain(origin)),
-      sourceToken: origin.symbol || 'TOKEN',
+      sourceToken: displayTokenSymbol(origin),
       destinationNetwork: chainLabel(tokenChain(destination)),
       destinationAsset: destination.assetId || '',
       payoutKind: paymentQuote?.xoduspay?.payoutKind || (String(destination.assetId || '').toLowerCase() === 'nep141:wrap.near' ? 'NATIVE_NEAR' : 'TOKEN'),
@@ -1505,6 +1505,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
         <div className="quote-title">Mainnet quote details</div>{isWidgetCheckout && <><div className="quote-row"><span>Merchant</span><strong>{merchantNameParam}</strong></div><div className="quote-row"><span>Purpose of payment</span><strong>{merchantPurposeParam}</strong></div></>}{fixedOutputCheckout && <p className="helper-text">Fixed USD checkout · target price ${Number(amount).toFixed(2)} USD. NEAR Intents calculates the input amount required to deliver the merchant's selected payout token at this value.</p>}
         <div className="quote-row"><span>Pay</span><strong>{quote.quote.amountInFormatted || formatUnits(quote.quote.amountIn, Number(origin?.decimals || 0))} {displayTokenSymbol(origin || {})}</strong></div>
         <div className="quote-row"><span>Estimated receive</span><strong>{(quote.quote.amountOutFormatted || quote.quote.amountOut) + ' ' + displayTokenSymbol(destination || {})}</strong></div>
+        {quote.xoduspay?.payoutKind === 'NATIVE_NEAR' && <p className="helper-text">Native NEAR payout: 1Click unwraps its internal wNEAR representation before sending NEAR to the merchant account.</p>}
         {quote.quote.amountInUsd && <div className="quote-row"><span>Payment value</span><strong>${Number(quote.quote.amountInUsd).toFixed(4)} USD</strong></div>}
         <div className="quote-row"><span>Network gas (paid separately)</span><strong>{gasEstimate?.kind === 'evm' ? '~' + Number(gasEstimate.amount).toPrecision(5) + ' ' + gasEstimate.symbol : gasEstimate?.label || 'Estimate unavailable'}</strong></div>
         {gasEstimate?.kind === 'evm' && <p className="helper-text">{gasEstimate.label}. The final fee can change before confirmation; your wallet shows the amount to approve.</p>}
