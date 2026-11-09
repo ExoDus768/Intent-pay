@@ -680,6 +680,10 @@ app.post('/api/quote', quoteLimiter, async (req, res) => {
         String(data.quote.destinationAsset).toLowerCase() !== 'nep141:wrap.near') {
       return res.status(502).json({ error: '1Click returned a different payout asset than the requested native NEAR route. Do not send this payment.' });
     }
+    if (isNativeNearPayout && data?.quote?.recipient &&
+        String(data.quote.recipient).toLowerCase() !== input.recipient.toLowerCase()) {
+      return res.status(502).json({ error: '1Click returned a different merchant recipient than requested. Do not send this payment.' });
+    }
     res.json({
       ...data,
       xoduspay: {
@@ -760,7 +764,13 @@ app.get('/api/transactions/lookup', paymentActionLimiter, async (req, res) => {
   }
   try {
     const query = new URLSearchParams({ search, numberOfTransactions: '10', statuses: 'SUCCESS,FAILED,PROCESSING,REFUNDED,INCOMPLETE_DEPOSIT,PENDING_DEPOSIT' });
-    const data = await oneClick('/transactions?' + query.toString(), { method: 'GET' });
+    const response = await fetch('https://1click.chaindefuser.com/api/v0/transactions?' + query.toString(), {
+      method: 'GET', headers: authHeaders()
+    });
+    const raw = await response.text();
+    let data;
+    try { data = raw ? JSON.parse(raw) : []; } catch { data = { message: raw }; }
+    if (!response.ok) throw Object.assign(new Error(data?.error?.message || data?.message || '1Click transaction lookup failed.'), { status: response.status });
     const rows = Array.isArray(data) ? data : (data?.transactions || data?.data || []);
     const matches = rows.filter(row =>
       Array.isArray(row.originChainTxHashes) && row.originChainTxHashes.some(hash => String(hash).toLowerCase() === search.toLowerCase()) ||
