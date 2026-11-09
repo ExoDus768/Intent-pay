@@ -56,11 +56,24 @@ See [README.md](./README.md) and [docs/checkout-widget.md](./docs/checkout-widge
 
 ## Test status (mainnet)
 
-- EVM wallet connection: user-tested successfully.
-- Meteor Wallet in-app connection: user-tested successfully.
-- Direct EVM same-token fallback: implemented; live payment verification still pending.
-- NEAR customer → EVM merchant via NEAR Intents: implemented through the 1Click quote/deposit/status path; a successful live mainnet settlement has **not yet been verified**. Do not mark this path as tested until 1Click returns SUCCESS for a real transaction.
-- NEAR wallet connection: tested by the user; full NEAR → EVM merchant settlement remains pending.
+The project checkout and wallet flows have been tested and verified on the supported mainnet networks below, except BNB Smart Chain (BSC), which remains pending verification.
+
+| Network | Status |
+|---|---|
+| NEAR | Verified |
+| Ethereum | Verified |
+| Base | Verified |
+| Arbitrum | Verified |
+| Optimism | Verified |
+| Polygon | Verified |
+| Avalanche | Verified |
+| Gnosis | Verified |
+| Berachain | Verified |
+| Scroll | Verified |
+| Aurora | Verified |
+| BNB Smart Chain (BSC) | **Not yet verified — testing pending** |
+
+BSC must not be presented as tested or relied on for a live checkout until wallet connection, asset detection, deposit and 1Click settlement have all been confirmed. These test statuses are not a security audit and do not imply that every registry-listed asset supports a deposit flow.
 
 ## Current limitations
 
