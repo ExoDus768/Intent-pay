@@ -40,16 +40,19 @@ const tokenName = t => `${displayTokenSymbol(t)} · ${t.blockchain || 'Unknown c
 const chainLabel = value => ({eth:'Ethereum',arb:'Arbitrum',op:'Optimism',avax:'Avalanche',bera:'Berachain'}[value] || String(value || '').split(/[-_ ]+/).map(x => x.charAt(0).toUpperCase() + x.slice(1)).join(' '));
 const normalizeBlockchain = (value, assetId = '') => {
   const raw = String(value || '').trim().toLowerCase().replace(/[_ ]+/g, '-');
+  const id = String(assetId || '').trim().toLowerCase();
   const aliases = {
     'ethereum':'eth','ethereum-mainnet':'eth','arbitrum-one':'arbitrum','arb':'arbitrum',
     'binance-smart-chain':'bsc','bnb':'bsc','bnb-chain':'bsc','binance':'bsc',
     'avalanche-c-chain':'avalanche','avax':'avalanche','op':'optimism',
     'matic':'polygon','pol':'polygon','ftm':'fantom','bera':'berachain',
-    'sol':'solana','xdai':'gnosis'
+    'sol':'solana','xdai':'gnosis',
+    'near-protocol':'near','near-mainnet':'near','near-mainnet-beta':'near'
   };
+  // The canonical Intents asset ID is authoritative for wrapped/native NEAR,
+  // even if the registry's display blockchain field uses another label.
+  if (id === 'nep141:wrap.near') return 'near';
   if (raw) return aliases[raw] || raw;
-  const id = String(assetId || '');
-  if (id.toLowerCase() === 'nep141:wrap.near') return 'near';
   const nep = id.match(/^nep141:([a-z0-9]+)-/i)?.[1]?.toLowerCase();
   if (nep) return aliases[nep] || nep;
   const oneCs = id.match(/^1cs_v1:([^:]+):/i)?.[1]?.toLowerCase();
