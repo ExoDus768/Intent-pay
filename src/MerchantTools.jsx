@@ -41,13 +41,13 @@ export default function MerchantTools({ open = false, onClose = () => {}, tokens
     tokens.filter(t => t?.assetId && validatedPayoutChains.has(chainOf(t))).map(chainOf)
   )].sort(), [tokens]);
   const payoutTokens = useMemo(() => tokens
-    .filter(t => t?.assetId && destinationChain && chainOf(t) === destinationChain && (destinationChain !== 'near' || String(t.symbol || '').toUpperCase() !== 'WNEAR' || String(t.assetId || '').toLowerCase() === 'nep141:wrap.near'))
+    .filter(t => t?.assetId && destinationChain && chainOf(t) === destinationChain && (destinationChain !== 'near' || String(t.symbol || '').toUpperCase() !== 'NEAR'))
     .sort((a, b) => {
-      const priority = token => String(token?.assetId || '').toLowerCase() === 'nep141:wrap.near' ? 2 : ({ USDC: 0, USDT: 1, NEAR: 2, WNEAR: 3 }[String(token?.symbol || '').toUpperCase()] ?? 10);
+      const priority = token => ({ USDC: 0, USDT: 1, WNEAR: 2 }[String(token?.symbol || '').toUpperCase()] ?? 10);
       return priority(a) - priority(b) || String(a.symbol || '').localeCompare(String(b.symbol || ''));
     }), [tokens, destinationChain]);
   const selected = tokens.find(t => String(t.assetId) === String(destinationAsset) && chainOf(t) === destinationChain);
-  const displayTokenSymbol = t => String(t?.assetId || '').toLowerCase() === 'nep141:wrap.near' ? 'NEAR (native)' : (t?.symbol || 'TOKEN');
+  const displayTokenSymbol = t => t?.symbol || 'TOKEN';
   const payoutChain = chainOf(selected || {});
   const isNearPayout = payoutChain === 'near';
   const isSolanaPayout = payoutChain === 'solana';
@@ -182,7 +182,7 @@ export default function MerchantTools({ open = false, onClose = () => {}, tokens
             <label htmlFor="intentpay-payout-token">Payout token on {destinationChain.toUpperCase()}</label>
             <select id="intentpay-payout-token" value={destinationAsset} onChange={e => setDestinationAsset(e.target.value)} disabled={payoutTokens.length === 0}>
               <option value="">{payoutTokens.length ? 'Choose a payout token' : 'No supported tokens on this network'}</option>
-              {payoutTokens.map(t => <option key={t.assetId} value={t.assetId}>{String(t.assetId).toLowerCase() === 'nep141:wrap.near' ? 'NEAR' : (t.symbol || 'TOKEN')}{String(t.assetId).toLowerCase() === 'nep141:wrap.near' ? ' · Native NEAR payout' : (t.name ? ' · ' + t.name : '')}</option>)}
+              {payoutTokens.map(t => <option key={t.assetId} value={t.assetId}>{t.symbol || 'TOKEN'}{t.name ? ' · ' + t.name : ''}</option>)}
             </select>
             {payoutTokens.length === 0 && <p className="merchant-error">No payout tokens are currently available for this network in the live NEAR Intents registry. Choose another network.</p>}
           </> : <p className="merchant-hint">Choose a payout network first. Only tokens supported on that network will appear here.</p>}
