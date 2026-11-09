@@ -784,7 +784,13 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
                 account, chain: 'solana:mainnet', transaction: bytes,
                 options: { preflightCommitment: options.preflightCommitment || 'confirmed' }
               });
-              return result?.signature;
+              const signature = result?.signature;
+              if (typeof signature === 'string') return signature;
+              if (signature instanceof Uint8Array) {
+                const bs58 = (await import('bs58')).default;
+                return bs58.encode(signature);
+              }
+              return signature;
             }
             const signed = await standardProvider.signTransaction(transaction);
             return connection.sendRawTransaction(signed.serialize(), options);
