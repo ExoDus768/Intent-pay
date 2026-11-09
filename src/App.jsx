@@ -57,7 +57,7 @@ const normalizeBlockchain = (value, assetId = '') => {
   return null;
 };
 const TOKEN_PRIORITY = ['USDC','USDT','NEAR','WNEAR','ETH','DAI','WETH','WBTC','USDBC','USDE','FRAX','USDS'];
-const tokenPriority = t => { const i = TOKEN_PRIORITY.indexOf(String(t.symbol || '').toUpperCase()); return i < 0 ? TOKEN_PRIORITY.length : i; };
+const tokenPriority = t => String(t?.assetId || '').toLowerCase() === 'nep141:wrap.near' ? 2 : (() => { const i = TOKEN_PRIORITY.indexOf(String(t.symbol || '').toUpperCase()); return i < 0 ? TOKEN_PRIORITY.length : i; })();
 const normalizeToken = token => {
   if (!token || typeof token !== 'object' || !token.assetId) return null;
   const blockchain = normalizeBlockchain(token.blockchain, token.assetId);
@@ -1488,7 +1488,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
       {quote?.quote && <div className="quote-card">
         <div className="quote-title">Mainnet quote details</div>{isWidgetCheckout && <><div className="quote-row"><span>Merchant</span><strong>{merchantNameParam}</strong></div><div className="quote-row"><span>Purpose of payment</span><strong>{merchantPurposeParam}</strong></div></>}{fixedOutputCheckout && <p className="helper-text">Fixed USD checkout · target price ${Number(amount).toFixed(2)} USD. NEAR Intents calculates the input amount required to deliver the merchant's selected payout token at this value.</p>}
         <div className="quote-row"><span>Pay</span><strong>{quote.quote.amountInFormatted || formatUnits(quote.quote.amountIn, Number(origin?.decimals || 0))} {displayTokenSymbol(origin || {})}</strong></div>
-        <div className="quote-row"><span>Estimated receive</span><strong>{(quote.quote.amountOutFormatted || quote.quote.amountOut) + ' ' + destination?.symbol}</strong></div>
+        <div className="quote-row"><span>Estimated receive</span><strong>{(quote.quote.amountOutFormatted || quote.quote.amountOut) + ' ' + displayTokenSymbol(destination || {})}</strong></div>
         {quote.quote.amountInUsd && <div className="quote-row"><span>Payment value</span><strong>${Number(quote.quote.amountInUsd).toFixed(4)} USD</strong></div>}
         <div className="quote-row"><span>Network gas (paid separately)</span><strong>{gasEstimate?.kind === 'evm' ? '~' + Number(gasEstimate.amount).toPrecision(5) + ' ' + gasEstimate.symbol : gasEstimate?.label || 'Estimate unavailable'}</strong></div>
         {gasEstimate?.kind === 'evm' && <p className="helper-text">{gasEstimate.label}. The final fee can change before confirmation; your wallet shows the amount to approve.</p>}
