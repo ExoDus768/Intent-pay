@@ -70,26 +70,6 @@ const normalizeTokenList = data => {
 };
 const short = (value = '') => value.length > 24 ? value.slice(0, 10) + '…' + value.slice(-8) : value;
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
-let mobileSolanaWalletsPromise;
-async function getMobileSolanaWallets() {
-  if (!mobileSolanaWalletsPromise) {
-    mobileSolanaWalletsPromise = Promise.all([
-      import('@solana-mobile/wallet-standard-mobile'),
-      import('@wallet-standard/app')
-    ]).then(([mobile, standard]) => {
-      mobile.registerMwa({
-        appIdentity: { name: 'XoDuspay', uri: window.location.origin, icon: '/favicon.ico' },
-        authorizationCache: mobile.createDefaultAuthorizationCache(),
-        chains: ['solana:mainnet'],
-        chainSelector: mobile.createDefaultChainSelector(),
-        onWalletNotFound: mobile.createDefaultWalletNotFoundHandler()
-      });
-      return standard.getWallets();
-    });
-  }
-  return mobileSolanaWalletsPromise;
-}
-
 const usdToTokenAtomic = (usdAmount, token) => {
   const usd = Number(usdAmount);
   const price = Number(token?.price);
@@ -752,7 +732,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
 
   async function connectSolanaWallet() {
     setWalletAction('solana');
-    setWalletFeedback('Auto-detecting your Solana wallet…');
+    setWalletFeedback('Auto-detecting Solana wallet connection…');
     try {
       const injected = getSolanaInjectedProvider();
       if (injected) {
@@ -773,38 +753,41 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
         });
         return;
       }
-      setWalletFeedback('No injected wallet found. Trying Mobile Wallet Adapter…');
-      const walletsApi = await getMobileSolanaWallets();
-      const wallets = walletsApi.get();
-      const wallet = wallets.find(item => /mobile wallet adapter/i.test(item.name || ''));
-      if (!wallet) throw new Error('No Mobile Wallet Adapter wallet was detected. Open XoDuspay inside Jupiter Mobile, or use an Android browser with a compatible wallet installed.');
-      const connectFeature = wallet.features?.['standard:connect'];
-      const signFeature = wallet.features?.['solana:signTransaction'];
-      if (!connectFeature?.connect || !signFeature?.signTransaction) throw new Error('The detected mobile wallet does not support Solana transaction signing.');
-      const connected = await connectFeature.connect();
-      const account = connected?.accounts?.[0];
-      if (!account?.publicKey) throw new Error('The mobile wallet did not return an authorized Solana account.');
-      const address = new PublicKey(account.publicKey).toBase58();
-      const adapter = {
-        publicKey: new PublicKey(address),
-        connect: async () => ({ publicKey: new PublicKey(address) }),
-        signTransaction: async transaction => {
-          const serialized = transaction.serialize({ requireAllSignatures: false, verifySignatures: false });
-          const results = await signFeature.signTransaction({ account, transaction: serialized, chain: 'solana:mainnet' });
-          const signedBytes = results?.[0]?.signedTransaction;
-          if (!signedBytes) throw new Error('The mobile wallet did not return a signed transaction.');
-          return Transaction.from(signedBytes);
+      setWalletFeedback('No injected provider found. Launching the native mobile wallet connection…');
+      const {
+        SolanaMobileWalletAdapter,
+        createDefaultAddressSelector,
+        createDefaultAuthorizationResultCache
+      } = await import('@solana-mobile/wallet-adapter-mobile');
+      const adapter = new SolanaMobileWalletAdapter({
+        appIdentity: { name: 'XoDuspay', uri: window.location.origin, icon: window.location.origin + '/favicon.ico' },
+        authorizationResultCache: createDefaultAuthorizationResultCache(),
+        addressSelector: createDefaultAddressSelector(),
+        cluster: 'mainnet-beta',
+        onWalletNotFound: async () => {
+          setWalletFeedback('No MWA wallet responded.');
+          setNotice('Jupiter supports Solana Mobile Wallet Adapter, but its in-app browser may block the wallet handoff. Try opening this checkout in Chrome on the same Android device, then connect again.');
         }
-      };
+      });
+      await adapter.connect();
+      const address = adapter.publicKey?.toBase58?.();
+      if (!address) throw new Error('The mobile wallet connected without returning a Solana public key.');
       activeSolProviderRef.current = adapter;
       setSolWallet(address);
-      setWalletFeedback('Mobile wallet connected successfully.');
-      setNotice('Connected through Solana Mobile Wallet Adapter. Choose SOL or a supported SPL token to pay.');
+      setWalletFeedback('Mobile Solana wallet connected successfully.');
+      setNotice('Connected through Solana Mobile Wallet Adapter on mainnet. Choose SOL or a supported SPL token to pay.');
       setWalletMenuOpen(false);
+      adapter.on?.('disconnect', () => {
+        activeSolProviderRef.current = null;
+        setSolWallet('');
+        setQuote(null);
+        setTxHash('');
+      });
     } catch (error) {
       const message = error?.message || 'Unknown error';
       setWalletFeedback('Solana connection failed: ' + message);
-      setNotice('Solana connection failed: ' + message + ' If you are using Jupiter Mobile, open XoDuspay in its in-app browser and retry.');
+      const inApp = /webview|navigation.*blocked|wallet not found|timed out|timeout/i.test(message);
+      setNotice('Solana connection failed: ' + message + (inApp ? ' Jupiter Mobile is MWA-compatible, but its embedded browser may block the app handoff. Open this same page in Chrome on Android and retry.' : ''));
     } finally { setWalletAction(''); }
   }
 
