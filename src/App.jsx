@@ -286,7 +286,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
 
   useEffect(() => {
     try {
-      const saved = sessionStorage.getItem('intentpay_pending_near');
+      const saved = sessionStorage.getItem('xoduspay_pending_near');
       if (saved) {
         const pending = JSON.parse(saved);
         if (pending?.quote?.quote?.deadline && Date.parse(pending.quote.quote.deadline) > Date.now()) {
@@ -296,9 +296,9 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
           setRecipient(pending.recipient || '');
           setTxHash('NEAR wallet approval pending — check status');
           setNotice('Returned from your NEAR wallet. Refresh payment status before attempting another deposit.');
-        } else sessionStorage.removeItem('intentpay_pending_near');
+        } else sessionStorage.removeItem('xoduspay_pending_near');
       }
-    } catch { sessionStorage.removeItem('intentpay_pending_near'); }
+    } catch { sessionStorage.removeItem('xoduspay_pending_near'); }
     let active = true;
     (async () => {
       try {
@@ -339,7 +339,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
   const destination = useMemo(() => tokens.find(t => tokenId(t) === destinationAsset), [tokens, destinationAsset]);
   const customerAccount = isNearToken(origin || {}) ? nearWallet : wallet;
 
-  const historyStorageKey = customerAccount ? 'intentpay_customer_history_' + customerAccount.toLowerCase() : '';
+  const historyStorageKey = customerAccount ? 'xoduspay_customer_history_' + customerAccount.toLowerCase() : '';
   useEffect(() => {
     if (!historyStorageKey) { setCustomerHistory([]); return; }
     try {
@@ -408,11 +408,11 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
       const cloud = await cloudResponse.json();
       if (!cloudResponse.ok) throw new Error(cloud.error || 'Could not load synced transaction history.');
       let localRows = [];
-      try { localRows = JSON.parse(localStorage.getItem('intentpay_customer_history_' + account.toLowerCase()) || '[]'); } catch {}
+      try { localRows = JSON.parse(localStorage.getItem('xoduspay_customer_history_' + account.toLowerCase()) || '[]'); } catch {}
       const merged = mergeHistoryRows(Array.isArray(cloud.entries) ? cloud.entries : [], Array.isArray(localRows) ? localRows : []);
       if (cancelled) return;
       setCustomerHistory(merged);
-      localStorage.setItem('intentpay_customer_history_' + account.toLowerCase(), JSON.stringify(merged));
+      localStorage.setItem('xoduspay_customer_history_' + account.toLowerCase(), JSON.stringify(merged));
       await fetch('/api/history', {
         method: 'PUT', headers: { ...authHeaders, 'Content-Type': 'application/json' },
         body: JSON.stringify({ entries: merged })
@@ -427,7 +427,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
   function saveCustomerHistory(entry) {
     const account = entry.account || customerAccount;
     if (!account) return;
-    const key = 'intentpay_customer_history_' + account.toLowerCase();
+    const key = 'xoduspay_customer_history_' + account.toLowerCase();
     try {
       const previous = JSON.parse(localStorage.getItem(key) || '[]');
       const rows = mergeHistoryRows(previous, [{ ...entry, createdAt: entry.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString() }]);
@@ -547,7 +547,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
             const response = await fetch('https://rpc.mainnet.near.org', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ jsonrpc: '2.0', id: 'intentpay-wallet-scan', method: 'query', params: { request_type: 'call_function', finality: 'final', account_id: contractId, method_name: 'ft_balance_of', args_base64: accountArgs } })
+              body: JSON.stringify({ jsonrpc: '2.0', id: 'xoduspay-wallet-scan', method: 'query', params: { request_type: 'call_function', finality: 'final', account_id: contractId, method_name: 'ft_balance_of', args_base64: accountArgs } })
             });
             const data = await response.json();
             if (!response.ok || data.error) continue;
@@ -634,7 +634,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
-                jsonrpc: '2.0', id: 'intentpay-balance', method: 'query',
+                jsonrpc: '2.0', id: 'xoduspay-balance', method: 'query',
                 params: { request_type: 'call_function', finality: 'final', account_id: contractId, method_name: 'ft_balance_of', args_base64: args }
               })
             });
@@ -645,7 +645,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
             const response = await fetch('https://rpc.mainnet.near.org', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ jsonrpc: '2.0', id: 'intentpay-balance', method: 'query', params: { request_type: 'view_account', finality: 'final', account_id: account } })
+              body: JSON.stringify({ jsonrpc: '2.0', id: 'xoduspay-balance', method: 'query', params: { request_type: 'view_account', finality: 'final', account_id: account } })
             });
             const data = await response.json();
             if (!response.ok || data.error) throw new Error(data.error?.message || 'Could not read NEAR account balance.');
@@ -1113,7 +1113,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
             'ft_transfer', { receiver_id: depositAddress, amount: amountIn }, 50000000000000n, 1n
           )] }];
         }
-        sessionStorage.setItem('intentpay_pending_near', JSON.stringify({ quote: activeQuote, originAsset, destinationAsset, recipient, nearWallet }));
+        sessionStorage.setItem('xoduspay_pending_near', JSON.stringify({ quote: activeQuote, originAsset, destinationAsset, recipient, nearWallet }));
         const result = await walletClient.signAndSendTransactions({ transactions, callbackUrl: window.location.href });
         const hash = result?.[0]?.transaction?.hash || result?.[0]?.transaction_outcome?.id || result?.transaction?.hash;
         if (!hash) {
@@ -1121,7 +1121,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
           setNotice('Your NEAR wallet did not return a transaction hash. Refresh payment status before attempting anything again.');
           return;
         }
-        sessionStorage.removeItem('intentpay_pending_near');
+        sessionStorage.removeItem('xoduspay_pending_near');
         setTxHash(hash);
         recordCurrentPayment('PROCESSING', hash, activeQuote);
         setNotice('NEAR transaction submitted. Notifying 1Click and checking settlement status…');
@@ -1135,7 +1135,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
           setSwapStatus(statusData.status || 'UNKNOWN');
           recordCurrentPayment(statusData.status || 'UNKNOWN', hash, activeQuote);
           if (TERMINAL.has(statusData.status)) {
-            sessionStorage.removeItem('intentpay_pending_near');
+            sessionStorage.removeItem('xoduspay_pending_near');
             if (statusData.status === 'SUCCESS') notifyPaymentSuccess();
             setNotice(statusData.status === 'SUCCESS' ? 'Payment completed. 1Click reports that the merchant payout was delivered.' : `Payment ended with status: ${statusData.status}. Review the provider response before taking further action.`);
             return;
@@ -1237,7 +1237,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
       if (!response.ok) throw new Error(data.error || 'Could not read status.');
       setSwapStatus(data.status || 'UNKNOWN');
       recordCurrentPayment(data.status || 'UNKNOWN');
-      if (TERMINAL.has(data.status)) sessionStorage.removeItem('intentpay_pending_near');
+      if (TERMINAL.has(data.status)) sessionStorage.removeItem('xoduspay_pending_near');
       if (data.status === 'SUCCESS') notifyPaymentSuccess();
       setNotice(data.status === 'SUCCESS' ? 'Payment completed and delivered.' : `Current payment status: ${data.status || 'UNKNOWN'}`);
     } catch (e) { setNotice(e.message); }
@@ -1250,7 +1250,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
   </main>;
 
   return <main className={checkoutOnly ? "shell customer-checkout-shell" : "shell"}>
-    <nav className={checkoutOnly ? "nav customer-nav" : "nav"}><div className="site-menu-wrap" ref={siteMenuWrapRef}><button type="button" className="hamburger-btn" aria-label="Open navigation menu" aria-expanded={siteMenuOpen} onClick={() => setSiteMenuOpen(open => !open)}><span></span><span></span><span></span></button>{siteMenuOpen && <div className="site-menu"><button type="button" className="site-menu-primary" onClick={() => { setSiteMenuOpen(false); setMerchantWorkspaceOpen(true); }}><span><b>01</b> Merchant workspace</span><span>↗</span></button><a href="#how-it-works" onClick={() => setSiteMenuOpen(false)}>How it works</a><a href="#checkout" onClick={() => setSiteMenuOpen(false)}>Supported networks</a><a href="https://github.com/ExoDus768/Intent-pay#readme" target="_blank" rel="noreferrer" onClick={() => setSiteMenuOpen(false)}>Documentation <span>↗</span></a><a href="https://github.com/ExoDus768/Intent-pay" target="_blank" rel="noreferrer" onClick={() => setSiteMenuOpen(false)}>GitHub repository <span>↗</span></a><div className="follow-menu-wrap" ref={followMenuWrapRef}><button type="button" className="follow-menu-trigger" aria-expanded={followMenuOpen} aria-haspopup="true" onClick={() => setFollowMenuOpen(open => !open)}>Follow Us <span>{followMenuOpen ? '⌃' : '›'}</span></button>{followMenuOpen && <div className="follow-submenu"><div className="follow-submenu-title">Follow XoDuspay</div><a className="follow-link-placeholder" href="https://x.com/Intent_Payy" target="_blank" rel="noreferrer"><strong>Follow XoDuspay on X</strong><small>@Intent_Payy ↗</small></a></div>}</div></div>}</div><a className="brand" href="#"><span className="brand-mark">X</span> XoDuspay</a><div className="nav-right"><span className="status"><i />{health}</span><div className="wallet-menu-wrap" ref={walletMenuWrapRef}><button type="button" className="wallet-btn" onClick={() => setWalletMenuOpen(open => !open)} disabled={!!walletAction}>{walletAction === 'evm' ? 'Connecting EVM…' : walletAction === 'near' ? 'Opening NEAR…' : walletAction === 'solana' ? 'Connecting Solana…' : walletAction === 'walletconnect' ? 'Connecting…' : wallet || nearWallet || solWallet ? short(wallet || nearWallet || solWallet) : 'Connect Wallet'} <span aria-hidden="true">⌄</span></button>{walletMenuOpen && <div className="wallet-menu"><button type="button" onClick={() => { setWalletFeedback('Starting EVM connection…'); connectWallet(); }} disabled={walletAction === 'evm'}><strong>EVM Wallet</strong><small>MetaMask, Zerion and other EVM wallets</small>{wallet && <small>Connected: {short(wallet)}</small>}</button><button type="button" onClick={() => { setWalletFeedback('Starting Solana connection…'); connectSolanaWallet(); }} disabled={walletAction === 'solana'}><strong>Solana Wallet</strong><small>Phantom and compatible Solana wallets</small>{solWallet && <small>Connected: {short(solWallet)}</small>}</button><button type="button" onClick={() => { setWalletFeedback('Starting NEAR connection…'); connectNearWallet(); }} disabled={walletAction === 'near'}><strong>NEAR Wallet</strong><small>MyNearWallet and supported NEAR wallets</small>{nearWallet && <small>Connected: {short(nearWallet)}</small>}</button><button type="button" onClick={connectMeteorWalletApp} disabled={walletAction === 'meteor-app'}><strong>Meteor Wallet App</strong><small>Connect directly inside Meteor’s in-app browser</small>{nearWallet && <small>Connected: {short(nearWallet)}</small>}</button><button type="button" onClick={() => { setWalletFeedback('Starting WalletConnect…'); connectWalletConnect(); }} disabled={walletAction === 'walletconnect'}><strong>WalletConnect</strong><small>Scan a QR code or open a compatible mobile wallet</small></button><div className="wallet-menu-feedback" role="status" aria-live="polite">{walletFeedback}</div></div>}</div></div></nav>
+    <nav className={checkoutOnly ? "nav customer-nav" : "nav"}><div className="site-menu-wrap" ref={siteMenuWrapRef}><button type="button" className="hamburger-btn" aria-label="Open navigation menu" aria-expanded={siteMenuOpen} onClick={() => setSiteMenuOpen(open => !open)}><span></span><span></span><span></span></button>{siteMenuOpen && <div className="site-menu"><button type="button" className="site-menu-primary" onClick={() => { setSiteMenuOpen(false); setMerchantWorkspaceOpen(true); }}><span><b>01</b> Merchant workspace</span><span>↗</span></button><a href="#how-it-works" onClick={() => setSiteMenuOpen(false)}>How it works</a><a href="#checkout" onClick={() => setSiteMenuOpen(false)}>Supported networks</a><a href="https://github.com/ExoDus768/XoDuspay-#readme" target="_blank" rel="noreferrer" onClick={() => setSiteMenuOpen(false)}>Documentation <span>↗</span></a><a href="https://github.com/ExoDus768/XoDuspay-" target="_blank" rel="noreferrer" onClick={() => setSiteMenuOpen(false)}>GitHub repository <span>↗</span></a><div className="follow-menu-wrap" ref={followMenuWrapRef}><button type="button" className="follow-menu-trigger" aria-expanded={followMenuOpen} aria-haspopup="true" onClick={() => setFollowMenuOpen(open => !open)}>Follow Us <span>{followMenuOpen ? '⌃' : '›'}</span></button>{followMenuOpen && <div className="follow-submenu"><div className="follow-submenu-title">Follow XoDuspay</div><a className="follow-link-placeholder" href="https://x.com/Intent_Payy" target="_blank" rel="noreferrer"><strong>Follow XoDuspay on X</strong><small>@Intent_Payy ↗</small></a></div>}</div></div>}</div><a className="brand" href="#"><span className="brand-mark">X</span> XoDuspay</a><div className="nav-right"><span className="status"><i />{health}</span><div className="wallet-menu-wrap" ref={walletMenuWrapRef}><button type="button" className="wallet-btn" onClick={() => setWalletMenuOpen(open => !open)} disabled={!!walletAction}>{walletAction === 'evm' ? 'Connecting EVM…' : walletAction === 'near' ? 'Opening NEAR…' : walletAction === 'solana' ? 'Connecting Solana…' : walletAction === 'walletconnect' ? 'Connecting…' : wallet || nearWallet || solWallet ? short(wallet || nearWallet || solWallet) : 'Connect Wallet'} <span aria-hidden="true">⌄</span></button>{walletMenuOpen && <div className="wallet-menu"><button type="button" onClick={() => { setWalletFeedback('Starting EVM connection…'); connectWallet(); }} disabled={walletAction === 'evm'}><strong>EVM Wallet</strong><small>MetaMask, Zerion and other EVM wallets</small>{wallet && <small>Connected: {short(wallet)}</small>}</button><button type="button" onClick={() => { setWalletFeedback('Starting Solana connection…'); connectSolanaWallet(); }} disabled={walletAction === 'solana'}><strong>Solana Wallet</strong><small>Phantom and compatible Solana wallets</small>{solWallet && <small>Connected: {short(solWallet)}</small>}</button><button type="button" onClick={() => { setWalletFeedback('Starting NEAR connection…'); connectNearWallet(); }} disabled={walletAction === 'near'}><strong>NEAR Wallet</strong><small>MyNearWallet and supported NEAR wallets</small>{nearWallet && <small>Connected: {short(nearWallet)}</small>}</button><button type="button" onClick={connectMeteorWalletApp} disabled={walletAction === 'meteor-app'}><strong>Meteor Wallet App</strong><small>Connect directly inside Meteor’s in-app browser</small>{nearWallet && <small>Connected: {short(nearWallet)}</small>}</button><button type="button" onClick={() => { setWalletFeedback('Starting WalletConnect…'); connectWalletConnect(); }} disabled={walletAction === 'walletconnect'}><strong>WalletConnect</strong><small>Scan a QR code or open a compatible mobile wallet</small></button><div className="wallet-menu-feedback" role="status" aria-live="polite">{walletFeedback}</div></div>}</div></div></nav>
     {!checkoutOnly && <MerchantTools tokens={tokens} defaultRecipient={wallet || nearWallet} open={merchantWorkspaceOpen} onClose={() => setMerchantWorkspaceOpen(false)} />}
     {!checkoutOnly && <section className="hero" id="how-it-works"><div className="eyebrow">UNIVERSAL CHECKOUT · POWERED BY NEAR INTENTS</div><h1>One checkout.<br/><span>Crypto payments, simplified.</span></h1><p>Merchants configure one reusable checkout. Customers pay with a supported wallet and asset while the merchant receives their chosen payout token.</p></section>}
     <section className="checkout" id="checkout">{bnbWarningOpen && originChain === 'bsc' && <div role="dialog" aria-modal="true" aria-labelledby="bnb-warning-title" style={{ position: 'fixed', inset: 0, zIndex: 10000, background: 'rgba(10,16,30,.72)', display: 'grid', placeItems: 'center', padding: 20 }}><div style={{ width: 'min(100%, 420px)', background: '#fff', color: '#172033', borderRadius: 20, padding: 24, boxShadow: '0 20px 60px rgba(0,0,0,.28)' }}><div style={{ fontSize: 30, marginBottom: 10 }}>⚠️</div><h2 id="bnb-warning-title" style={{ margin: '0 0 10px' }}>BNB Chain payments unavailable</h2><p style={{ lineHeight: 1.55, color: '#596579' }}>We haven’t been able to verify a working payment route for BNB Smart Chain. To prevent a failed transaction, XoDuspay has paused checkout on this network.</p><p style={{ lineHeight: 1.55, color: '#596579' }}>No funds will be sent. Please choose another supported payment network.</p><button type="button" className="primary" style={{ width: '100%' }} onClick={() => { setOriginChain(''); setOriginAsset(''); setOriginSearch(''); setBnbWarningOpen(false); setNotice('Choose another supported payment network to continue.'); }}>Choose another network</button></div></div>}{isWidgetCheckout && <div className="checkout-banner"><span className="eyebrow">{checkoutOnly ? 'MERCHANT PAYMENT' : 'PAYMENT REQUEST'}</span><strong>{isFixedWidgetCheckout ? "$" + Number(merchantAmountParam).toFixed(2) + " USD worth of " + (destination?.symbol || "payout token") : "Variable amount"}</strong><p>{checkoutParams.get("merchantName") || "Merchant payment"} · {fixedOutputCheckout ? "Fixed USD price. The equivalent " + (destination?.symbol || "payout token") + " amount is calculated using its live price." : "Customer chooses the amount."}</p></div>}
