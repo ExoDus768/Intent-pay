@@ -789,7 +789,8 @@ app.get('/api/transactions/lookup', paymentActionLimiter, async (req, res) => {
     ).map(row => ({
       originAsset: row.originAsset, destinationAsset: row.destinationAsset, recipient: row.recipient,
       status: row.status, createdAt: row.createdAt, intentHashes: row.intentHashes,
-      nearTxHashes: row.nearTxHashes, originChainTxHashes: row.originChainTxHashes,
+      recipientType: row.recipientType, depositAddress: row.depositAddress,
+      refundType: row.refundType, nearTxHashes: row.nearTxHashes, originChainTxHashes: row.originChainTxHashes,
       destinationChainTxHashes: row.destinationChainTxHashes,
       amountInFormatted: row.amountInFormatted, amountOutFormatted: row.amountOutFormatted,
       amountOut: row.amountOut
