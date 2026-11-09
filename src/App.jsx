@@ -54,7 +54,7 @@ const normalizeBlockchain = (value, assetId = '') => {
   if (oneCs) return aliases[oneCs] || oneCs;
   return null;
 };
-const TOKEN_PRIORITY = ['USDC','USDT','ETH','NEAR','DAI','WETH','WBTC','USDBC','USDE','FRAX','USDS'];
+const TOKEN_PRIORITY = ['USDC','USDT','WNEAR','NEAR','ETH','DAI','WETH','WBTC','USDBC','USDE','FRAX','USDS'];
 const tokenPriority = t => { const i = TOKEN_PRIORITY.indexOf(String(t.symbol || '').toUpperCase()); return i < 0 ? TOKEN_PRIORITY.length : i; };
 const normalizeToken = token => {
   if (!token || typeof token !== 'object' || !token.assetId) return null;
