@@ -8,7 +8,7 @@ XoDuspay gives merchants one checkout flow they can share as a hosted link, QR c
 
 - **Public landing page:** https://xoduspay-exo-c836.vercel.app/
 - **Merchant workspace:** https://xoduspay-exo-c836.vercel.app/merchant
-- **Project on X:** https://x.com/Intent_Payy
+- **Project on X:** https://x.com/XoDuspay
 - **Hackathon overview:** [HACKATHON.md](./HACKATHON.md)
 
 ## How it works
