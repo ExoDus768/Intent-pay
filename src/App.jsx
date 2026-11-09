@@ -10,6 +10,12 @@ import { setupHotWallet } from '@near-wallet-selector/hot-wallet';
 import { setupSender } from '@near-wallet-selector/sender';
 import '@near-wallet-selector/modal-ui/styles.css';
 import { EthereumProvider } from '@walletconnect/ethereum-provider';
+import { Connection, PublicKey, SystemProgram, Transaction, LAMPORTS_PER_SOL } from '@solana/web3.js';
+import {
+  TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID,
+  getAssociatedTokenAddressSync, getAccount, getMint,
+  createAssociatedTokenAccountInstruction, createTransferCheckedInstruction
+} from '@solana/spl-token';
 import MerchantTools from './MerchantTools.jsx';
 import LandingPage from './LandingPage.jsx';
 
@@ -25,6 +31,7 @@ const NATIVE_SYMBOL = {1:'ETH',8453:'ETH',42161:'ETH',10:'ETH',137:'POL',56:'BNB
 const TERMINAL = new Set(['SUCCESS', 'FAILED', 'REFUNDED', 'INCOMPLETE_DEPOSIT']);
 const tokenChain = t => normalizeBlockchain(t?.blockchain, t?.assetId);
 const isNearToken = t => tokenChain(t) === 'near';
+const isSolanaToken = t => tokenChain(t) === 'solana';
 const tokenId = t => t.assetId || '';
 const tokenName = t => `${t.symbol || 'TOKEN'} · ${t.blockchain || 'Unknown chain'}`;
 const chainLabel = value => ({eth:'Ethereum',arb:'Arbitrum',op:'Optimism',avax:'Avalanche',bera:'Berachain'}[value] || String(value || '').split(/[-_ ]+/).map(x => x.charAt(0).toUpperCase() + x.slice(1)).join(' '));
@@ -115,6 +122,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
   const [loadingTokens, setLoadingTokens] = useState(true);
   const [wallet, setWallet] = useState('');
   const [nearWallet, setNearWallet] = useState('');
+  const [solWallet, setSolWallet] = useState('');
   const [nearSelector, setNearSelector] = useState(null);
   const [nearModal, setNearModal] = useState(null);
   const [walletAction, setWalletAction] = useState('');
@@ -144,7 +152,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
   const [historyAuth, setHistoryAuth] = useState({ account: '', token: '', status: 'idle', error: '' });
   const [historySyncRequested, setHistorySyncRequested] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [notice, setNotice] = useState('Connect your EVM or NEAR mainnet wallet, choose the asset you will pay with, and set the merchant payout details.');
+  const [notice, setNotice] = useState('Connect an EVM, NEAR or Solana mainnet wallet, choose the asset you will pay with, and set the merchant payout details.');
   const quoteRequestRef = useRef(0);
 
   // Update the displayed countdown against the provider-issued expiry deadline.
@@ -165,7 +173,17 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
     : `${Math.floor(quoteSecondsRemaining / 60)}:${String(quoteSecondsRemaining % 60).padStart(2, '0')}`;
   const evmProvidersRef = useRef([]);
   const activeEvmProviderRef = useRef(null);
+  const activeSolProviderRef = useRef(null);
+  const solanaConnectionRef = useRef(null);
   const walletConnectProviderRef = useRef(null);
+  const sourceWallet = isNearToken(origin || {}) ? nearWallet : isSolanaToken(origin || {}) ? solWallet : wallet;
+  const getSolanaConnection = () => {
+    if (!solanaConnectionRef.current) {
+      const endpoint = import.meta.env.VITE_SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com';
+      solanaConnectionRef.current = new Connection(endpoint, 'confirmed');
+    }
+    return solanaConnectionRef.current;
+  };
   const siteMenuWrapRef = useRef(null);
   const walletMenuWrapRef = useRef(null);
   const followMenuWrapRef = useRef(null);
@@ -467,7 +485,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
   const usdEstimate = amount && Number.isFinite(Number(amount)) && Number(amount) > 0
     ? (fixedOutputCheckout ? Number(amount) : (Number.isFinite(Number(origin?.price)) && Number(origin.price) > 0 ? Number(amount) * Number(origin.price) : null))
     : null;
-  const origins = useMemo(() => tokens.filter(t => CHAIN_IDS[tokenChain(t)] || isNearToken(t)), [tokens]);
+  const origins = useMemo(() => tokens.filter(t => CHAIN_IDS[tokenChain(t)] || isNearToken(t) || isSolanaToken(t)), [tokens]);
   const originChains = useMemo(() => [...new Set([...origins.map(tokenChain), 'near'])].sort((a, b) => chainLabel(a).localeCompare(chainLabel(b))), [origins]);
   const originTokens = useMemo(() => origins.filter(t => tokenChain(t) === originChain).sort((a, b) => tokenPriority(a) - tokenPriority(b) || String(a.symbol || '').localeCompare(String(b.symbol || ''))), [origins, originChain]);
   const filteredOriginTokens = useMemo(() => origins
@@ -479,10 +497,11 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
   const otherOriginTokens = useMemo(() => originTokens.filter(t => !(Number(walletTokenBalances[t.assetId] || 0) > 0)), [originTokens, walletTokenBalances]);
   useEffect(() => {
     if (originChain) return undefined;
-    if (nearWallet && !wallet && origins.some(t => tokenChain(t) === 'near')) {
+    if (nearWallet && !wallet && !solWallet && origins.some(t => tokenChain(t) === 'near')) {
       setOriginChain('near');
       return undefined;
     }
+    if (solWallet && !wallet && origins.some(t => isSolanaToken(t))) { setOriginChain('solana'); return undefined; }
     if (!wallet || !activeEvmProviderRef.current) return undefined;
     let cancelled = false;
     new BrowserProvider(activeEvmProviderRef.current, 'any').getNetwork().then(network => {
@@ -490,7 +509,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
       if (!cancelled && matching) setOriginChain(tokenChain(matching));
     }).catch(() => {});
     return () => { cancelled = true; };
-  }, [originChain, wallet, nearWallet, origins]);
+  }, [originChain, wallet, nearWallet, solWallet, origins]);
   const destinations = useMemo(() => tokens, [tokens]);
   // Merchant payout destinations must have a recipient validator in the backend.
   // Other API-listed chains remain available as customer source assets.
@@ -510,7 +529,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
       setWalletTokenScan({ loading: false, error: '', complete: false });
       if (!originChain) return;
       const nearSource = originChain === 'near';
-      const account = nearSource ? nearWallet : wallet;
+      const account = nearSource ? nearWallet : originChain === 'solana' ? solWallet : wallet;
       if (!account) {
         setWalletTokenScan({ loading: false, error: nearSource ? 'Connect your NEAR wallet to detect token balances.' : 'Connect your EVM wallet to detect token balances.', complete: false });
         return;
@@ -534,6 +553,21 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
             const raw = JSON.parse(new TextDecoder().decode(new Uint8Array(data.result.result)));
             const formatted = Number(formatUnits(String(raw), Number(token.decimals || 0)));
             if (Number.isFinite(formatted) && formatted > 0) found[token.assetId] = formatted;
+          }
+        } else if (originChain === 'solana') {
+          const connection = getSolanaConnection();
+          const owner = new PublicKey(account);
+          const [nativeLamports, tokenAccounts] = await Promise.all([
+            connection.getBalance(owner, 'confirmed'),
+            connection.getParsedTokenAccountsByOwner(owner, { programId: TOKEN_PROGRAM_ID }, 'confirmed')
+          ]);
+          const solToken = originTokens.find(token => !token.contractAddress && String(token.symbol || '').toUpperCase() === 'SOL');
+          if (solToken && nativeLamports > 0) found[solToken.assetId] = nativeLamports / LAMPORTS_PER_SOL;
+          const parsedByMint = new Map(tokenAccounts.value.map(item => [item.account.data.parsed.info.mint, Number(item.account.data.parsed.info.tokenAmount.uiAmount || 0)]));
+          for (const token of originTokens) {
+            if (!token.contractAddress) continue;
+            const amount = parsedByMint.get(token.contractAddress) || 0;
+            if (amount > 0) found[token.assetId] = amount;
           }
         } else {
           const providerObject = activeEvmProviderRef.current || window.ethereum;
@@ -582,9 +616,10 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
       setBalanceError('');
       if (!origin) return;
       const nearSource = isNearToken(origin);
-      const account = nearSource ? nearWallet : wallet;
+      const solanaSource = isSolanaToken(origin);
+      const account = nearSource ? nearWallet : solanaSource ? solWallet : wallet;
       if (!account) {
-        setBalanceError(nearSource ? 'Connect your NEAR wallet to see your balance.' : 'Connect your EVM wallet to see your balance.');
+        setBalanceError(nearSource ? 'Connect your NEAR wallet to see your balance.' : solanaSource ? 'Connect your Solana wallet to see your balance.' : 'Connect your EVM wallet to see your balance.');
         return;
       }
       setBalanceLoading(true);
@@ -615,6 +650,20 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
             if (!response.ok || data.error) throw new Error(data.error?.message || 'Could not read NEAR account balance.');
             rawBalance = data.result.amount;
           }
+        } else if (solanaSource) {
+          const connection = getSolanaConnection();
+          const owner = new PublicKey(account);
+          if (origin.contractAddress) {
+            const mint = new PublicKey(origin.contractAddress);
+            const tokenProgram = await connection.getAccountInfo(mint, 'confirmed');
+            if (!tokenProgram) throw new Error('The selected SPL token mint was not found on Solana mainnet.');
+            const programId = tokenProgram.owner.equals(TOKEN_2022_PROGRAM_ID) ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID;
+            const ata = getAssociatedTokenAddressSync(mint, owner, false, programId, ASSOCIATED_TOKEN_PROGRAM_ID);
+            const tokenAccount = await getAccount(connection, ata, 'confirmed', programId);
+            rawBalance = tokenAccount.amount.toString();
+          } else {
+            rawBalance = String(await connection.getBalance(owner, 'confirmed'));
+          }
         } else {
           const providerObject = activeEvmProviderRef.current || window.ethereum;
           if (!providerObject) throw new Error('Open XoDuspay inside your EVM wallet browser to read the balance.');
@@ -641,11 +690,40 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
     }
     loadSelectedAssetBalance();
     return () => { cancelled = true; };
-  }, [origin, wallet, nearWallet]);
+  }, [origin, wallet, nearWallet, solWallet]);
 
   const destinationIsNear = destinationChain === 'near' || isNearToken(destinationTokens.find(t => t.assetId === destinationAsset) || {});
   const destinationIsSolana = destinationChain === 'solana';
   const recipientPlaceholder = destinationIsNear ? 'e.g. merchant.near' : destinationIsSolana ? 'Solana wallet address' : 'e.g. 0xAbC123...7890';
+
+  async function connectSolanaWallet() {
+    setWalletAction('solana');
+    setWalletFeedback('Connecting to a Solana wallet…');
+    try {
+      const provider = window.phantom?.solana || window.solana;
+      if (!provider || typeof provider.connect !== 'function') {
+        throw new Error('No compatible Solana wallet was detected. Open XoDuspay in Phantom or another wallet that injects a Solana provider.');
+      }
+      const response = await provider.connect();
+      const address = response?.publicKey?.toString?.() || provider.publicKey?.toString?.();
+      if (!address) throw new Error('The Solana wallet did not return a public key.');
+      const publicKey = new PublicKey(address);
+      if (publicKey.toBase58() !== address) throw new Error('The connected Solana public key is invalid.');
+      activeSolProviderRef.current = provider;
+      setSolWallet(address);
+      setWalletFeedback('Solana wallet connected successfully.');
+      setNotice('Solana wallet connected on mainnet. Choose SOL or a supported SPL token to pay.');
+      setWalletMenuOpen(false);
+      provider.on?.('accountChanged', next => {
+        const nextAddress = next?.toString?.() || '';
+        setSolWallet(nextAddress);
+        if (!nextAddress) { setQuote(null); setTxHash(''); }
+      });
+    } catch (error) {
+      setWalletFeedback('Solana connection failed: ' + (error?.message || 'Unknown error'));
+      setNotice('Solana wallet connection failed: ' + (error?.message || 'Unknown error'));
+    } finally { setWalletAction(''); }
+  }
 
   async function connectNearWallet() {
     setWalletAction('near');
@@ -806,7 +884,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
   async function createQuote() {
     const requestId = ++quoteRequestRef.current;
     setQuote(null); setGasEstimate(null); setTxHash(''); setSwapStatus('');
-    if (isNearToken(origin || {}) ? !nearWallet : !wallet) return setNotice(isNearToken(origin || {}) ? 'Connect your NEAR wallet first. It will be used for refunds.' : 'Connect your EVM wallet first. The connected address is used for refunds.');
+    if (!sourceWallet) return setNotice(isNearToken(origin || {}) ? 'Connect your NEAR wallet first. It will be used for refunds.' : isSolanaToken(origin || {}) ? 'Connect your Solana wallet first. It will be used for refunds.' : 'Connect your EVM wallet first. The connected address is used for refunds.');
     if (checkoutOnly && (!merchantNameParam || !merchantPurposeParam)) return setNotice('This checkout link is missing the required merchant name or payment purpose. Ask the merchant to regenerate the checkout link.');
     if (!origin || !destination || !amount || Number(amount) <= 0 || !recipient.trim()) return setNotice('Complete the origin token, destination token, amount, and merchant payout address.');
     if (recipient.startsWith('0x') && !isAddress(recipient)) return setNotice('The merchant EVM payout address is invalid.');
@@ -826,7 +904,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
           destinationAsset: destination.assetId,
           amount: atomicAmount,
           recipient: recipient.trim(),
-          refundTo: isNearToken(origin) ? nearWallet : wallet,
+          refundTo: sourceWallet,
           nearSenderAccount: isNearToken(origin) ? nearWallet : undefined,
           swapType: fixedOutputCheckout ? 'EXACT_OUTPUT' : 'EXACT_INPUT',
           slippageTolerance: 100
@@ -838,6 +916,8 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
       let gas = { kind: 'unavailable', label: 'Wallet estimate unavailable' };
       if (isNearToken(origin)) {
         gas = { kind: 'near', label: 'Shown in NEAR wallet before approval' };
+      } else if (isSolanaToken(origin)) {
+        gas = { kind: 'solana', label: 'Solana network fee shown in your wallet before approval' };
       } else if (!data?.quote?.depositAddress) {
         gas = { kind: 'unavailable', label: 'Final network fee will be shown in your wallet before approval' };
       } else {
@@ -881,7 +961,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
   useEffect(() => {
     const complete = Boolean(
       origin && destination && amount && Number(amount) > 0 &&
-      recipient.trim() && (isNearToken(origin) ? nearWallet : wallet)
+      recipient.trim() && sourceWallet
     );
     // Any changed checkout detail invalidates the old quote and requests a fresh one.
     quoteRequestRef.current += 1;
@@ -912,7 +992,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
             destinationAsset: destination.assetId,
             amount: fixedOutputCheckout ? usdToTokenAtomic(amount, destination) : parseUnits(amount, Number(origin.decimals)).toString(),
             recipient: recipient.trim(),
-            refundTo: isNearToken(origin) ? nearWallet : wallet,
+            refundTo: sourceWallet,
             nearSenderAccount: isNearToken(origin) ? nearWallet : undefined,
             swapType: fixedOutputCheckout ? 'EXACT_OUTPUT' : 'EXACT_INPUT',
             slippageTolerance: 100,
@@ -933,6 +1013,75 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
       setQuote(null); setBusy(false); return setNotice('This quote has expired. Request a new quote before sending funds.');
     }
     const chainKey = tokenChain(origin);
+    if (chainKey === 'solana') {
+      const provider = activeSolProviderRef.current || window.phantom?.solana || window.solana;
+      if (!provider || !solWallet) return setNotice('Connect your Solana wallet before sending this deposit.');
+      setBusy(true);
+      try {
+        const connection = getSolanaConnection();
+        const owner = new PublicKey(solWallet);
+        const depositOwner = new PublicKey(activeQuote.quote.depositAddress);
+        const amountIn = BigInt(activeQuote.quote.amountIn);
+        const transaction = new Transaction();
+        if (origin.contractAddress) {
+          const mint = new PublicKey(origin.contractAddress);
+          const mintAccount = await connection.getAccountInfo(mint, 'confirmed');
+          if (!mintAccount) throw new Error('The token mint from the live 1Click registry does not exist on Solana mainnet.');
+          const tokenProgram = mintAccount.owner.equals(TOKEN_2022_PROGRAM_ID) ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID;
+          const mintInfo = await getMint(connection, mint, 'confirmed', tokenProgram);
+          if (mintInfo.decimals !== Number(origin.decimals)) throw new Error('The live token registry decimals do not match the on-chain SPL mint. Payment stopped for safety.');
+          const sourceAta = getAssociatedTokenAddressSync(mint, owner, false, tokenProgram, ASSOCIATED_TOKEN_PROGRAM_ID);
+          const destinationAta = getAssociatedTokenAddressSync(mint, depositOwner, true, tokenProgram, ASSOCIATED_TOKEN_PROGRAM_ID);
+          const sourceAccount = await getAccount(connection, sourceAta, 'confirmed', tokenProgram);
+          if (sourceAccount.amount < amountIn) throw new Error('Insufficient ' + origin.symbol + ' balance for this deposit.');
+          const destinationInfo = await connection.getAccountInfo(destinationAta, 'confirmed');
+          if (!destinationInfo) {
+            transaction.add(createAssociatedTokenAccountInstruction(owner, destinationAta, depositOwner, mint, tokenProgram, ASSOCIATED_TOKEN_PROGRAM_ID));
+          }
+          transaction.add(createTransferCheckedInstruction(sourceAta, mint, destinationAta, owner, amountIn, mintInfo.decimals, [], tokenProgram));
+        } else {
+          if (String(origin.symbol || '').toUpperCase() !== 'SOL') throw new Error('This Solana asset has no SPL mint address in the live registry. It cannot be transferred safely.');
+          const balance = await connection.getBalance(owner, 'confirmed');
+          if (BigInt(balance) < amountIn) throw new Error('Insufficient SOL balance for this deposit and the Solana network fee.');
+          transaction.add(SystemProgram.transfer({ fromPubkey: owner, toPubkey: depositOwner, lamports: amountIn }));
+        }
+        const latest = await connection.getLatestBlockhash('confirmed');
+        transaction.feePayer = owner;
+        transaction.recentBlockhash = latest.blockhash;
+        setNotice('Solana transfer prepared. Review the asset, amount, recipient deposit account and network fee in your wallet.');
+        const signature = await provider.signAndSendTransaction(transaction, connection, { skipPreflight: false, preflightCommitment: 'confirmed' });
+        const hash = typeof signature === 'string' ? signature : signature?.signature;
+        if (!hash || hash.length < 32) throw new Error('The Solana wallet did not return a valid transaction signature.');
+        setTxHash(hash);
+        recordCurrentPayment('PROCESSING', hash, activeQuote);
+        setNotice('Solana transaction broadcast. Waiting for network confirmation…');
+        const confirmation = await connection.confirmTransaction({ signature: hash, blockhash: latest.blockhash, lastValidBlockHeight: latest.lastValidBlockHeight }, 'confirmed');
+        if (confirmation.value?.err) throw new Error('The Solana deposit transaction failed on-chain. Signature: ' + hash);
+        setNotice('Solana deposit confirmed. Notifying 1Click and checking settlement status…');
+        const submitted = await fetch('/api/deposit/submit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ txHash: hash, depositAddress: activeQuote.quote.depositAddress, depositMemo: activeQuote.quote.depositMemo || undefined }) });
+        const submitData = await submitted.json();
+        if (!submitted.ok) throw new Error(submitData.error || 'Deposit notification failed. The Solana transaction is confirmed; check status again.');
+        for (let attempt = 0; attempt < 180; attempt++) {
+          const statusResponse = await fetch('/api/status?' + new URLSearchParams({ depositAddress: activeQuote.quote.depositAddress, depositMemo: activeQuote.quote.depositMemo || '' }));
+          const statusData = await statusResponse.json();
+          if (!statusResponse.ok) throw new Error(statusData.error || 'Could not read payment status.');
+          setSwapStatus(statusData.status || 'UNKNOWN');
+          recordCurrentPayment(statusData.status || 'UNKNOWN', hash, activeQuote);
+          if (TERMINAL.has(statusData.status)) {
+            if (statusData.status === 'SUCCESS') notifyPaymentSuccess();
+            setNotice(statusData.status === 'SUCCESS' ? 'Payment completed. 1Click reports that the merchant payout was delivered.' : 'Payment ended with status: ' + statusData.status + '. Review the provider response before taking further action.');
+            return;
+          }
+          setNotice('Solana deposit confirmed. Payment status: ' + (statusData.status || 'PROCESSING') + '…');
+          await wait(5000);
+        }
+        setNotice('The Solana deposit is confirmed, but settlement is still pending. Do not send a second payment.');
+      } catch (error) {
+        const detail = error?.message || 'Unknown Solana wallet error';
+        setNotice('Solana payment was not completed. ' + detail + (txHash ? ' Check the existing transaction status before retrying.' : ' No confirmed transaction was recorded.'));
+      } finally { setBusy(false); }
+      return;
+    }
     if (chainKey === 'near') {
       if (!nearSelector || !nearWallet) return setNotice('Connect your NEAR wallet before sending this deposit.');
       setBusy(true);
@@ -1091,7 +1240,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
   </main>;
 
   return <main className={checkoutOnly ? "shell customer-checkout-shell" : "shell"}>
-    <nav className={checkoutOnly ? "nav customer-nav" : "nav"}><div className="site-menu-wrap" ref={siteMenuWrapRef}><button type="button" className="hamburger-btn" aria-label="Open navigation menu" aria-expanded={siteMenuOpen} onClick={() => setSiteMenuOpen(open => !open)}><span></span><span></span><span></span></button>{siteMenuOpen && <div className="site-menu"><button type="button" className="site-menu-primary" onClick={() => { setSiteMenuOpen(false); setMerchantWorkspaceOpen(true); }}><span><b>01</b> Merchant workspace</span><span>↗</span></button><a href="#how-it-works" onClick={() => setSiteMenuOpen(false)}>How it works</a><a href="#checkout" onClick={() => setSiteMenuOpen(false)}>Supported networks</a><a href="https://github.com/ExoDus768/Intent-pay#readme" target="_blank" rel="noreferrer" onClick={() => setSiteMenuOpen(false)}>Documentation <span>↗</span></a><a href="https://github.com/ExoDus768/Intent-pay" target="_blank" rel="noreferrer" onClick={() => setSiteMenuOpen(false)}>GitHub repository <span>↗</span></a><div className="follow-menu-wrap" ref={followMenuWrapRef}><button type="button" className="follow-menu-trigger" aria-expanded={followMenuOpen} aria-haspopup="true" onClick={() => setFollowMenuOpen(open => !open)}>Follow Us <span>{followMenuOpen ? '⌃' : '›'}</span></button>{followMenuOpen && <div className="follow-submenu"><div className="follow-submenu-title">Follow XoDuspay</div><a className="follow-link-placeholder" href="https://x.com/Intent_Payy" target="_blank" rel="noreferrer"><strong>Follow XoDuspay on X</strong><small>@Intent_Payy ↗</small></a></div>}</div></div>}</div><a className="brand" href="#"><span className="brand-mark">X</span> XoDuspay</a><div className="nav-right"><span className="status"><i />{health}</span><div className="wallet-menu-wrap" ref={walletMenuWrapRef}><button type="button" className="wallet-btn" onClick={() => setWalletMenuOpen(open => !open)} disabled={!!walletAction}>{walletAction === 'evm' ? 'Connecting EVM…' : walletAction === 'near' ? 'Opening NEAR…' : walletAction === 'walletconnect' ? 'Connecting…' : wallet || nearWallet ? short(wallet || nearWallet) : 'Connect Wallet'} <span aria-hidden="true">⌄</span></button>{walletMenuOpen && <div className="wallet-menu"><button type="button" onClick={() => { setWalletFeedback('Starting EVM connection…'); connectWallet(); }} disabled={walletAction === 'evm'}><strong>EVM Wallet</strong><small>MetaMask, Zerion and other EVM wallets</small>{wallet && <small>Connected: {short(wallet)}</small>}</button><button type="button" onClick={() => { setWalletFeedback('Starting NEAR connection…'); connectNearWallet(); }} disabled={walletAction === 'near'}><strong>NEAR Wallet</strong><small>MyNearWallet and supported NEAR wallets</small>{nearWallet && <small>Connected: {short(nearWallet)}</small>}</button><button type="button" onClick={connectMeteorWalletApp} disabled={walletAction === 'meteor-app'}><strong>Meteor Wallet App</strong><small>Connect directly inside Meteor’s in-app browser</small>{nearWallet && <small>Connected: {short(nearWallet)}</small>}</button><button type="button" onClick={() => { setWalletFeedback('Starting WalletConnect…'); connectWalletConnect(); }} disabled={walletAction === 'walletconnect'}><strong>WalletConnect</strong><small>Scan a QR code or open a compatible mobile wallet</small></button><div className="wallet-menu-feedback" role="status" aria-live="polite">{walletFeedback}</div></div>}</div></div></nav>
+    <nav className={checkoutOnly ? "nav customer-nav" : "nav"}><div className="site-menu-wrap" ref={siteMenuWrapRef}><button type="button" className="hamburger-btn" aria-label="Open navigation menu" aria-expanded={siteMenuOpen} onClick={() => setSiteMenuOpen(open => !open)}><span></span><span></span><span></span></button>{siteMenuOpen && <div className="site-menu"><button type="button" className="site-menu-primary" onClick={() => { setSiteMenuOpen(false); setMerchantWorkspaceOpen(true); }}><span><b>01</b> Merchant workspace</span><span>↗</span></button><a href="#how-it-works" onClick={() => setSiteMenuOpen(false)}>How it works</a><a href="#checkout" onClick={() => setSiteMenuOpen(false)}>Supported networks</a><a href="https://github.com/ExoDus768/Intent-pay#readme" target="_blank" rel="noreferrer" onClick={() => setSiteMenuOpen(false)}>Documentation <span>↗</span></a><a href="https://github.com/ExoDus768/Intent-pay" target="_blank" rel="noreferrer" onClick={() => setSiteMenuOpen(false)}>GitHub repository <span>↗</span></a><div className="follow-menu-wrap" ref={followMenuWrapRef}><button type="button" className="follow-menu-trigger" aria-expanded={followMenuOpen} aria-haspopup="true" onClick={() => setFollowMenuOpen(open => !open)}>Follow Us <span>{followMenuOpen ? '⌃' : '›'}</span></button>{followMenuOpen && <div className="follow-submenu"><div className="follow-submenu-title">Follow XoDuspay</div><a className="follow-link-placeholder" href="https://x.com/Intent_Payy" target="_blank" rel="noreferrer"><strong>Follow XoDuspay on X</strong><small>@Intent_Payy ↗</small></a></div>}</div></div>}</div><a className="brand" href="#"><span className="brand-mark">X</span> XoDuspay</a><div className="nav-right"><span className="status"><i />{health}</span><div className="wallet-menu-wrap" ref={walletMenuWrapRef}><button type="button" className="wallet-btn" onClick={() => setWalletMenuOpen(open => !open)} disabled={!!walletAction}>{walletAction === 'evm' ? 'Connecting EVM…' : walletAction === 'near' ? 'Opening NEAR…' : walletAction === 'solana' ? 'Connecting Solana…' : walletAction === 'walletconnect' ? 'Connecting…' : wallet || nearWallet || solWallet ? short(wallet || nearWallet || solWallet) : 'Connect Wallet'} <span aria-hidden="true">⌄</span></button>{walletMenuOpen && <div className="wallet-menu"><button type="button" onClick={() => { setWalletFeedback('Starting EVM connection…'); connectWallet(); }} disabled={walletAction === 'evm'}><strong>EVM Wallet</strong><small>MetaMask, Zerion and other EVM wallets</small>{wallet && <small>Connected: {short(wallet)}</small>}</button><button type="button" onClick={() => { setWalletFeedback('Starting Solana connection…'); connectSolanaWallet(); }} disabled={walletAction === 'solana'}><strong>Solana Wallet</strong><small>Phantom and compatible Solana wallets</small>{solWallet && <small>Connected: {short(solWallet)}</small>}</button><button type="button" onClick={() => { setWalletFeedback('Starting NEAR connection…'); connectNearWallet(); }} disabled={walletAction === 'near'}><strong>NEAR Wallet</strong><small>MyNearWallet and supported NEAR wallets</small>{nearWallet && <small>Connected: {short(nearWallet)}</small>}</button><button type="button" onClick={connectMeteorWalletApp} disabled={walletAction === 'meteor-app'}><strong>Meteor Wallet App</strong><small>Connect directly inside Meteor’s in-app browser</small>{nearWallet && <small>Connected: {short(nearWallet)}</small>}</button><button type="button" onClick={() => { setWalletFeedback('Starting WalletConnect…'); connectWalletConnect(); }} disabled={walletAction === 'walletconnect'}><strong>WalletConnect</strong><small>Scan a QR code or open a compatible mobile wallet</small></button><div className="wallet-menu-feedback" role="status" aria-live="polite">{walletFeedback}</div></div>}</div></div></nav>
     {!checkoutOnly && <MerchantTools tokens={tokens} defaultRecipient={wallet || nearWallet} open={merchantWorkspaceOpen} onClose={() => setMerchantWorkspaceOpen(false)} />}
     {!checkoutOnly && <section className="hero" id="how-it-works"><div className="eyebrow">UNIVERSAL CHECKOUT · POWERED BY NEAR INTENTS</div><h1>One checkout.<br/><span>Crypto payments, simplified.</span></h1><p>Merchants configure one reusable checkout. Customers pay with a supported wallet and asset while the merchant receives their chosen payout token.</p></section>}
     <section className="checkout" id="checkout">{isWidgetCheckout && <div className="checkout-banner"><span className="eyebrow">{checkoutOnly ? 'MERCHANT PAYMENT' : 'PAYMENT REQUEST'}</span><strong>{isFixedWidgetCheckout ? "$" + Number(merchantAmountParam).toFixed(2) + " USD worth of " + (destination?.symbol || "payout token") : "Variable amount"}</strong><p>{checkoutParams.get("merchantName") || "Merchant payment"} · {fixedOutputCheckout ? "Fixed USD price. The equivalent " + (destination?.symbol || "payout token") + " amount is calculated using its live price." : "Customer chooses the amount."}</p></div>}
@@ -1145,7 +1294,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
         {destinationChain && destinationTokens.length === 0 && <p className="warning">No payout tokens are currently listed for {chainLabel(destinationChain)} in the live NEAR Intents registry. Choose another network.</p>}
         {destinationChain && destinationTokens.length > 0 && !destinationTokens.some(t => String(t.symbol || '').toUpperCase() === 'USDT') && <p className="helper-text">USDT is not currently listed as a supported payout token on {chainLabel(destinationChain)} by NEAR Intents. Other listed tokens are shown above.</p>}
         <label>{destinationIsNear ? 'Merchant NEAR account address' : destinationIsSolana ? 'Merchant Solana wallet address' : 'Merchant EVM wallet address'}</label><input value={recipient} onChange={e => setRecipient(e.target.value)} placeholder={recipientPlaceholder} autoCapitalize="none" autoCorrect="off" spellCheck={false} required disabled={Boolean(isWidgetCheckout) || !destinationChain || !destinationAsset} /><p className="helper-text">{!destinationChain ? 'Choose a payout network and token first. The required address format will appear here.' : !destinationAsset ? 'Choose a payout token to see the correct merchant address format.' : destinationIsNear ? 'Enter the merchant’s NEAR account ID, for example merchant.near' : destinationIsSolana ? 'Enter a Solana mainnet base58 wallet address.' : 'Enter the merchant’s EVM address for this network, starting with 0x'}</p>
-        <div className="refund-note">Refund address: {isNearToken(origin || {}) ? (nearWallet ? short(nearWallet) : 'Connect NEAR wallet') : (wallet ? short(wallet) : 'Connect EVM wallet')}</div>
+        <div className="refund-note">Refund address: {isNearToken(origin || {}) ? (nearWallet ? short(nearWallet) : 'Connect NEAR wallet') : isSolanaToken(origin || {}) ? (solWallet ? short(solWallet) : 'Connect Solana wallet') : (wallet ? short(wallet) : 'Connect EVM wallet')}</div>
         <div className="quote-auto-state" role="status">{busy ? 'Getting your quote…' : quote ? 'Quote ready. Review it below.' : 'Your quote will be generated automatically when all selections are complete.'}</div>
       </form>
       {!configured && <p className="warning">NEAR Intents routing requires a server-side 1Click JWT. No alternative payment provider or direct-transfer fallback is enabled. Never paste API keys into this page.</p>}
@@ -1157,7 +1306,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
         {quote.quote.amountInUsd && <div className="quote-row"><span>Payment value</span><strong>${Number(quote.quote.amountInUsd).toFixed(4)} USD</strong></div>}
         <div className="quote-row"><span>Network gas (paid separately)</span><strong>{gasEstimate?.kind === 'evm' ? '~' + Number(gasEstimate.amount).toPrecision(5) + ' ' + gasEstimate.symbol : gasEstimate?.label || 'Estimate unavailable'}</strong></div>
         {gasEstimate?.kind === 'evm' && <p className="helper-text">{gasEstimate.label}. The final fee can change before confirmation; your wallet shows the amount to approve.</p>}
-        {gasEstimate?.kind === 'near' && <p className="helper-text">NEAR network gas is paid separately from your NEAR balance. Review the final fee in your NEAR wallet before approving.</p>}
+        {gasEstimate?.kind === 'near' && <p className="helper-text">NEAR network gas is paid separately from your NEAR balance. Review the final fee in your NEAR wallet before approving.</p>}{gasEstimate?.kind === 'solana' && <p className="helper-text">Solana transaction fees and any rent for a newly-created destination token account are paid separately from your SOL balance.</p>}
         {gasEstimate?.kind === 'unavailable' && <p className="helper-text">Could not estimate gas: {gasEstimate.label}. Your wallet will show the required network fee before you sign.</p>}
         <div className="quote-row"><span>Routing</span><strong>NEAR Intents · 1Click</strong></div><div className="quote-row"><span>Merchant address</span><strong>{short(recipient)}</strong></div>
         <p className="helper-text">NEAR Intents calculates the conversion and delivery amount shown in this quote. Network gas is separate and paid to the source blockchain.</p>
