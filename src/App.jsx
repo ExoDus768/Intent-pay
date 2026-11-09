@@ -72,6 +72,28 @@ const normalizeTokenList = data => {
 };
 const short = (value = '') => value.length > 24 ? value.slice(0, 10) + '…' + value.slice(-8) : value;
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+const NEAR_RPC_ENDPOINTS = ['https://free.rpc.fastnear.com', 'https://near.drpc.org'];
+async function nearRpc(payload) {
+  let lastError;
+  for (const endpoint of NEAR_RPC_ENDPOINTS) {
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await response.json();
+      if (!response.ok || data.error) {
+        const message = data.error?.message || data.error?.cause?.name || `HTTP ${response.status}`;
+        throw new Error(`NEAR RPC ${endpoint} rejected the request: ${message}`);
+      }
+      return data;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw new Error(lastError?.message || 'All configured NEAR mainnet RPC providers failed.');
+}
 const usdToTokenAtomic = (usdAmount, token) => {
   const usd = Number(usdAmount);
   const price = Number(token?.price);
@@ -308,7 +330,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
     (async () => {
       try {
         const selector = await setupWalletSelector({
-          network: 'mainnet',
+          network: { networkId: 'mainnet', nodeUrl: NEAR_RPC_ENDPOINTS[0] },
           optimizeWalletOrder: true,
           modules: [
             setupNearMobileWallet(),
@@ -559,13 +581,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
             if (cancelled) return;
             const contractId = token.contractAddress || String(token.assetId || '').replace(/^nep141:/, '');
             if (!contractId) continue;
-            const response = await fetch('https://rpc.mainnet.near.org', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ jsonrpc: '2.0', id: 'xoduspay-wallet-scan', method: 'query', params: { request_type: 'call_function', finality: 'final', account_id: contractId, method_name: 'ft_balance_of', args_base64: accountArgs } })
-            });
-            const data = await response.json();
-            if (!response.ok || data.error) continue;
+            const data = await nearRpc({ jsonrpc: '2.0', id: 'xoduspay-wallet-scan', method: 'query', params: { request_type: 'call_function', finality: 'final', account_id: contractId, method_name: 'ft_balance_of', args_base64: accountArgs } });
             const raw = JSON.parse(new TextDecoder().decode(new Uint8Array(data.result.result)));
             const formatted = Number(formatUnits(String(raw), Number(token.decimals || 0)));
             if (Number.isFinite(formatted) && formatted > 0) found[token.assetId] = formatted;
@@ -645,25 +661,13 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
           const contractId = origin.contractAddress || String(origin.assetId || '').replace(/^nep141:/, '');
           if (contractId) {
             const args = btoa(JSON.stringify({ account_id: account }));
-            const response = await fetch('https://rpc.mainnet.near.org', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                jsonrpc: '2.0', id: 'xoduspay-balance', method: 'query',
-                params: { request_type: 'call_function', finality: 'final', account_id: contractId, method_name: 'ft_balance_of', args_base64: args }
-              })
+            const data = await nearRpc({
+              jsonrpc: '2.0', id: 'xoduspay-balance', method: 'query',
+              params: { request_type: 'call_function', finality: 'final', account_id: contractId, method_name: 'ft_balance_of', args_base64: args }
             });
-            const data = await response.json();
-            if (!response.ok || data.error) throw new Error(data.error?.cause?.name || data.error?.message || 'Could not read NEAR token balance.');
             rawBalance = JSON.parse(new TextDecoder().decode(new Uint8Array(data.result.result)));
           } else {
-            const response = await fetch('https://rpc.mainnet.near.org', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ jsonrpc: '2.0', id: 'xoduspay-balance', method: 'query', params: { request_type: 'view_account', finality: 'final', account_id: account } })
-            });
-            const data = await response.json();
-            if (!response.ok || data.error) throw new Error(data.error?.message || 'Could not read NEAR account balance.');
+            const data = await nearRpc({ jsonrpc: '2.0', id: 'xoduspay-balance', method: 'query', params: { request_type: 'view_account', finality: 'final', account_id: account } });
             rawBalance = data.result.amount;
           }
         } else if (solanaSource) {
