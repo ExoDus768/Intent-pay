@@ -41,7 +41,7 @@ export default function MerchantTools({ open = false, onClose = () => {}, tokens
     tokens.filter(t => t?.assetId && validatedPayoutChains.has(chainOf(t))).map(chainOf)
   )].sort(), [tokens]);
   const payoutTokens = useMemo(() => tokens
-    .filter(t => t?.assetId && destinationChain && chainOf(t) === destinationChain && (destinationChain !== 'near' || String(t.symbol || '').toUpperCase() !== 'NEAR'))
+    .filter(t => t?.assetId && destinationChain && chainOf(t) === destinationChain && (destinationChain !== 'near' || String(t.assetId || '').toLowerCase() === 'nep141:wrap.near' || String(t.symbol || '').trim().toUpperCase() !== 'NEAR'))
     .sort((a, b) => {
       const priority = token => ({ USDC: 0, USDT: 1, WNEAR: 2 }[String(token?.symbol || '').toUpperCase()] ?? 10);
       return priority(a) - priority(b) || String(a.symbol || '').localeCompare(String(b.symbol || ''));
