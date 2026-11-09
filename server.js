@@ -529,6 +529,49 @@ app.put('/api/history', async (req, res) => {
   } catch (error) { res.status(error.status || 500).json({ error: error.message }); }
 });
 
+app.post('/api/solana/rpc', async (req, res) => {
+  const allowedMethods = new Set([
+    'getBalance', 'getTokenAccountsByOwner', 'getAccountInfo', 'getMultipleAccounts',
+    'getLatestBlockhash', 'getFeeForMessage', 'getMinimumBalanceForRentExemption',
+    'sendTransaction', 'getSignatureStatuses', 'getTransaction', 'getBlockHeight',
+    'getSlot', 'getEpochInfo', 'simulateTransaction', 'isBlockhashValid'
+  ]);
+  const payload = req.body;
+  if (!payload || typeof payload.method !== 'string' || !allowedMethods.has(payload.method)) {
+    return res.status(400).json({ error: { code: -32600, message: 'Unsupported Solana RPC method.' } });
+  }
+  const endpoints = [
+    'https://solana-rpc.publicnode.com',
+    'https://api.mainnet.solana.com',
+    'https://api.mainnet-beta.solana.com'
+  ];
+  let lastStatus = 502;
+  let lastMessage = 'No Solana RPC provider responded.';
+  for (const endpoint of endpoints) {
+    try {
+      const upstream = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(12000)
+      });
+      const body = await upstream.text();
+      if (upstream.ok) {
+        res.status(200);
+        res.set('Content-Type', 'application/json');
+        return res.send(body);
+      }
+      lastStatus = upstream.status;
+      lastMessage = `Solana RPC provider returned HTTP ${upstream.status}.`;
+      console.error('[Solana RPC] upstream rejected request', { endpoint, method: payload.method, status: upstream.status });
+    } catch (error) {
+      lastMessage = String(error?.message || error).slice(0, 300);
+      console.error('[Solana RPC] upstream request failed', { endpoint, method: payload.method, message: lastMessage });
+    }
+  }
+  return res.status(502).json({ error: { code: -32000, message: lastMessage, upstreamStatus: lastStatus } });
+});
+
 app.get('/api/health', (_req, res) => res.json({ ok: true, service: 'xoduspay-api' }));
 
 app.get('/api/config', (_req, res) => res.json({
