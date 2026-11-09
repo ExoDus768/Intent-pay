@@ -11,6 +11,8 @@ import { setupSender } from '@near-wallet-selector/sender';
 import '@near-wallet-selector/modal-ui/styles.css';
 import { EthereumProvider } from '@walletconnect/ethereum-provider';
 import { Connection, PublicKey, SystemProgram, Transaction, LAMPORTS_PER_SOL } from '@solana/web3.js';
+import { getWallets } from '@wallet-standard/app';
+import { SolanaMobileWalletAdapter, createDefaultAddressSelector, createDefaultAuthorizationResultCache } from '@solana-mobile/wallet-adapter-mobile';
 import {
   TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID,
   getAssociatedTokenAddressSync, getAccount, getMint,
@@ -749,7 +751,6 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
       }
 
       // Wallet Standard discovers compatible browser wallets without hard-coding brands.
-      const { getWallets } = await import('@wallet-standard/app');
       const walletRegistry = getWallets();
       const supportedWallets = walletRegistry.get().filter(wallet =>
         wallet.chains?.some(chain => chain === 'solana:mainnet') &&
@@ -819,11 +820,6 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
 
       // Wallets without an injected/Wallet Standard browser provider can use Android MWA.
       setWalletFeedback('No browser wallet detected. Trying the mobile wallet connection…');
-      const {
-        SolanaMobileWalletAdapter,
-        createDefaultAddressSelector,
-        createDefaultAuthorizationResultCache
-      } = await import('@solana-mobile/wallet-adapter-mobile');
       const adapter = new SolanaMobileWalletAdapter({
         appIdentity: { name: 'XoDuspay', uri: window.location.origin, icon: window.location.origin + '/favicon.ico' },
         authorizationResultCache: createDefaultAuthorizationResultCache(),
