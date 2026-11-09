@@ -1090,7 +1090,9 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
         transaction.feePayer = owner;
         transaction.recentBlockhash = latest.blockhash;
         setNotice('Solana transfer prepared. Review the asset, amount, recipient deposit account and network fee in your wallet.');
-        const signature = typeof provider.signAndSendTransaction === 'function'\n          ? await provider.signAndSendTransaction(transaction, connection, { skipPreflight: false, preflightCommitment: 'confirmed' })\n          : await (async () => { const signed = await provider.signTransaction(transaction); return await connection.sendRawTransaction(signed.serialize(), { skipPreflight: false, preflightCommitment: 'confirmed' }); })();
+        const signature = typeof provider.signAndSendTransaction === 'function'
+          ? await provider.signAndSendTransaction(transaction, connection, { skipPreflight: false, preflightCommitment: 'confirmed' })
+          : await (async () => { const signed = await provider.signTransaction(transaction); return await connection.sendRawTransaction(signed.serialize(), { skipPreflight: false, preflightCommitment: 'confirmed' }); })();
         const hash = typeof signature === 'string' ? signature : signature?.signature;
         if (!hash || hash.length < 32) throw new Error('The Solana wallet did not return a valid transaction signature.');
         setTxHash(hash);
