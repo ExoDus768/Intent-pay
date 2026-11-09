@@ -201,8 +201,9 @@ function validateQuoteBody(body, tokens) {
     throw error;
   }
   // Native NEAR is not a selectable payout asset in this checkout flow.
-  // Use the registry's WNEAR asset (nep141:wrap.near); 1Click unwraps it
-  // automatically when the destination chain is NEAR.
+  // Match the canonical assetId first: registry symbols are display metadata and
+  // must never cause nep141:wrap.near itself to be hidden or rejected.
+  // 1Click unwraps the WNEAR asset automatically for NEAR-chain delivery.
   if (String(destination.blockchain || '').toLowerCase() === 'near' &&
       String(destination.symbol || '').trim().toUpperCase() === 'NEAR' &&
       String(destination.assetId || '').toLowerCase() !== 'nep141:wrap.near') {
