@@ -208,7 +208,7 @@ function validateQuoteBody(body, tokens) {
 
 
 function historySecret() {
-  const secret = process.env.XODUSPAY_HISTORY_SECRET || process.env.INTENTPAY_HISTORY_SECRET;
+  const secret = process.env.XODUSPAY_HISTORY_SECRET || undefined;
   if (!secret) {
     const error = new Error('Wallet history authentication is not configured.');
     error.status = 503;
@@ -592,7 +592,7 @@ app.post('/api/quote', quoteLimiter, async (req, res) => {
         return res.status(502).json({ error: '1Click returned an incomplete committed quote. No payment should be sent.' });
       }
     }
-    res.json({ ...data, intentpay: { origin: input.origin, destination: input.destination } });
+    res.json({ ...data, xoduspay: { origin: input.origin, destination: input.destination } });
   } catch (error) {
     res.status(error.status || 502).json({ error: error.message });
   }
