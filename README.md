@@ -47,6 +47,29 @@ XoDuspay gives merchants one checkout flow they can share as a hosted link, QR c
 - 1Click estimated settlement-time display
 - Wallet-linked customer transaction history with private cloud storage; cross-device behavior still requires end-to-end testing
 
+## Testing and verification status
+
+The checkout and wallet flows have been tested on mainnet for the supported networks listed below, with the exception of BNB Smart Chain (BSC).
+
+| Network | Testing status |
+|---|---|
+| NEAR | Verified |
+| Ethereum | Verified |
+| Base | Verified |
+| Arbitrum | Verified |
+| Optimism | Verified |
+| Polygon | Verified |
+| Avalanche | Verified |
+| Gnosis | Verified |
+| Berachain | Verified |
+| Scroll | Verified |
+| Aurora | Verified |
+| BNB Smart Chain (BSC) | **Not yet verified — testing pending** |
+
+BSC remains explicitly unverified; do not treat it as tested or rely on it for a live checkout until its wallet connection, asset detection, deposit and 1Click settlement have been confirmed.
+
+Verification refers to the tested checkout flows and should not be interpreted as a security audit or a guarantee that every token listed by the live registry is supported for deposits.
+
 ## Supported wallet networks
 
 NEAR mainnet deposits are supported through NEAR Wallet Selector for NEP-141 assets listed by the live registry, including wrapped NEAR. Native NEAR is wrapped to wNEAR in the wallet transaction before transfer.
@@ -91,9 +114,9 @@ XoDuspay is a hackathon prototype, not an audited payment processor.
 
 - Merchant accounts and saved widget configurations are not implemented; merchants currently configure the widget in the workspace.
 - Customer transaction history uses wallet-linked private cloud storage, but two-device synchronization has not yet been end-to-end verified.
-- The NEAR deposit path uses NEAR mainnet and the MyNearWallet wallet-selector module. It still requires end-to-end verification with a live 1Click quote.
+- BNB Smart Chain (BSC) is listed in the EVM network mapping but remains unverified; its end-to-end checkout test is pending.
 - Other non-EVM wallet deposit flows are not implemented, even if their assets appear in the live registry as payout options.
-- The embed loader opens the hosted checkout; merchants should still test the integration on their own site and verify popup behavior in their customers' browsers.
+- Merchants should verify popup behavior and styling when embedding the checkout on their own production websites.
 - There is no refund-management interface.
 - The server validates asset IDs against the live token registry and validates payout/refund addresses. Production still needs merchant authentication, monitoring and a security review.
 - A failed notification after a confirmed on-chain deposit must be reconciled by checking the quote status. Do not send a second deposit for the same quote.
