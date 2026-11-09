@@ -200,6 +200,15 @@ function validateQuoteBody(body, tokens) {
     error.status = 400;
     throw error;
   }
+  // Native NEAR is not a selectable payout asset in this checkout flow.
+  // Use the registry's WNEAR asset (nep141:wrap.near); 1Click unwraps it
+  // automatically when the destination chain is NEAR.
+  if (String(destination.blockchain || '').toLowerCase() === 'near' &&
+      String(destination.symbol || '').trim().toUpperCase() === 'NEAR') {
+    const error = new Error('Select WNEAR (nep141:wrap.near) for a NEAR payout. 1Click delivers native NEAR to the NEAR account.');
+    error.status = 400;
+    throw error;
+  }
   // The minimum is enforced after the 1Click quote using its authoritative amountInUsd field.
   const originChain = String(origin.blockchain || '').toLowerCase();
   const isNearOrigin = originChain === 'near';
