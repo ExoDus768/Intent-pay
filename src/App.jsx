@@ -834,9 +834,27 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
           setNotice('No compatible wallet was detected in this browser. Open XoDuspay inside a supported wallet app, or use a browser with a Solana wallet extension installed.');
         }
       });
-      await adapter.connect();
-      const address = adapter.publicKey?.toBase58?.();
-      if (!address) throw new Error('The mobile wallet connected without returning a Solana public key.');
+      // MWA's wallet-standard account-change event selects the authorized account
+      // and populates adapter.publicKey asynchronously after connect() resolves.
+      const connectedPublicKey = await new Promise((resolve, reject) => {
+        let settled = false;
+        const finish = (error, publicKey) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timeout);
+          adapter.off?.('connect', onConnect);
+          if (error) reject(error);
+          else resolve(publicKey);
+        };
+        const onConnect = publicKey => finish(null, publicKey || adapter.publicKey);
+        const timeout = setTimeout(() => finish(new Error('The wallet handoff completed but no authorized Solana account was returned.')), 20000);
+        adapter.on('connect', onConnect);
+        adapter.connect().then(() => {
+          if (adapter.publicKey) finish(null, adapter.publicKey);
+        }).catch(error => finish(error));
+      });
+      const address = connectedPublicKey?.toBase58?.() || adapter.publicKey?.toBase58?.();
+      if (!address) throw new Error('The mobile wallet authorized but did not provide a usable Solana public key.');
       activeSolProviderRef.current = adapter;
       setSolWallet(address);
       setWalletFeedback('Solana mobile wallet connected successfully.');
