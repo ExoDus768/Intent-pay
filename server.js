@@ -178,11 +178,20 @@ function validateQuoteBody(body, tokens) {
     throw error;
   }
   // The minimum is enforced after the 1Click quote using its authoritative amountInUsd field.
-  const isNearOrigin = String(origin.blockchain || '').toLowerCase() === 'near';
-  if (isNearOrigin ? (!isNearAccount(refundTo) || refundTo !== nearSenderAccount) : !isEvmAddress(refundTo)) {
+  const originChain = String(origin.blockchain || '').toLowerCase();
+  const isNearOrigin = originChain === 'near';
+  const isSolanaOrigin = ['solana', 'sol'].includes(originChain);
+  const validRefundAddress = isNearOrigin
+    ? (isNearAccount(refundTo) && refundTo === nearSenderAccount)
+    : isSolanaOrigin
+      ? (() => { try { return decodeBase58(refundTo).length === 32; } catch { return false; } })()
+      : isEvmAddress(refundTo);
+  if (!validRefundAddress) {
     const error = new Error(isNearOrigin
       ? 'For a NEAR-origin payment, refundTo and nearSenderAccount must be the connected NEAR account.'
-      : 'For an EVM-origin payment, refundTo must be the connected EVM wallet address.');
+      : isSolanaOrigin
+        ? 'For a Solana-origin payment, refundTo must be the connected Solana wallet address.'
+        : 'For an EVM-origin payment, refundTo must be the connected EVM wallet address.');
     error.status = 400;
     throw error;
   }
