@@ -100,7 +100,7 @@ async function readApiResponse(response, label = 'API request') {
   try {
     data = raw ? JSON.parse(raw) : {};
   } catch {
-    const detail = raw.replace(/\\s+/g, ' ').slice(0, 220);
+    const detail = raw.slice(0, 220).replaceAll('\n', ' ');
     throw new Error(label + ' returned a non-JSON response (HTTP ' + response.status + '). ' + (detail || 'The server returned an empty response.'));
   }
   return data;
