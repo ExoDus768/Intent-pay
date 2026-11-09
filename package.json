@@ -33,7 +33,9 @@
     "buffer": "^6.0.3",
     "express-rate-limit": "^8.0.1",
     "@solana/web3.js": "^1.98.4",
-    "@solana/spl-token": "^0.4.14"
+    "@solana/spl-token": "^0.4.14",
+    "@solana-mobile/wallet-standard-mobile": "^0.7.0",
+    "@wallet-standard/app": "^1.1.0"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.4",
