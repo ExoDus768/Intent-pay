@@ -664,7 +664,7 @@ app.post('/api/quote', quoteLimiter, async (req, res) => {
     }
     res.json({ ...data, xoduspay: { origin: input.origin, destination: input.destination } });
   } catch (error) {
-    const bridgeMinimum = String(error.providerMessage || '').match(/(?:try\\s+at\\s+least|minimum(?:\\s+amount)?(?:\\s+is)?\\s*[:=]?)\\s*([0-9]+)/i);
+    const bridgeMinimum = String(error.providerMessage || '').match(/(?:try\s+at\s+least|minimum(?:\s+amount)?(?:\s+is)?\s*[:=]?)\s*([0-9]+)/i);
     if (bridgeMinimum && input) {
       const minimumAtomic = bridgeMinimum[1];
       const amountToken = input.swapType === 'EXACT_OUTPUT' ? input.destination : input.origin;
