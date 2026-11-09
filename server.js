@@ -598,9 +598,10 @@ app.get('/api/tokens', async (_req, res) => {
 
 
 app.post('/api/quote', quoteLimiter, async (req, res) => {
+  let input = null;
   try {
     const tokens = await getTokens();
-    const input = validateQuoteBody(req.body, tokens);
+    input = validateQuoteBody(req.body, tokens);
     const request = {
       dry: req.body?.dry === true,
       swapType: input.swapType,
@@ -663,8 +664,8 @@ app.post('/api/quote', quoteLimiter, async (req, res) => {
     }
     res.json({ ...data, xoduspay: { origin: input.origin, destination: input.destination } });
   } catch (error) {
-    const bridgeMinimum = String(error.providerMessage || '').match(/(?:try\s+at\s+least|minimum(?:\s+amount)?(?:\s+is)?\s*[:=]?)\s*([0-9]+)/i);
-    if (bridgeMinimum) {
+    const bridgeMinimum = String(error.providerMessage || '').match(/(?:try\\s+at\\s+least|minimum(?:\\s+amount)?(?:\\s+is)?\\s*[:=]?)\\s*([0-9]+)/i);
+    if (bridgeMinimum && input) {
       const minimumAtomic = bridgeMinimum[1];
       const amountToken = input.swapType === 'EXACT_OUTPUT' ? input.destination : input.origin;
       const formattedMinimum = formatAtomicAmount(minimumAtomic, amountToken.decimals);
@@ -674,41 +675,9 @@ app.post('/api/quote', quoteLimiter, async (req, res) => {
       const minimumLabel = formattedMinimum
         ? formattedMinimum + ' ' + amountToken.symbol
         : minimumAtomic + ' base units';
-      const usdLabel = Number.isFinite(usdValue) && usdValue > 0 ? ' (approximately , paymentActionLimiter, async (req, res) => {
-  const { txHash, depositAddress, depositMemo, nearSenderAccount } = req.body || {};
-  if (typeof txHash !== 'string' || txHash.length < 10 || txHash.length > 160 ||
-      typeof depositAddress !== 'string' || depositAddress.length < 5 || depositAddress.length > 160) {
-    return res.status(400).json({ error: 'A valid txHash and depositAddress are required.' });
-  }
-  try {
-    const payload = { txHash, depositAddress };
-    if (nearSenderAccount) {
-      if (!isNearAccount(nearSenderAccount)) return res.status(400).json({ error: 'nearSenderAccount is not a valid NEAR account ID.' });
-      payload.nearSenderAccount = nearSenderAccount;
-    }
-    if (depositMemo) payload.memo = String(depositMemo);
-    const data = await oneClick('/deposit/submit', { method: 'POST', body: JSON.stringify(payload) });
-    res.json(data);
-  } catch (error) { res.status(error.status || 502).json({ error: error.message }); }
-});
-
-app.get('/api/status', async (req, res) => {
-  const { depositAddress, depositMemo } = req.query;
-  if (typeof depositAddress !== 'string' || depositAddress.length < 5 || depositAddress.length > 160) {
-    return res.status(400).json({ error: 'depositAddress is required.' });
-  }
-  try {
-    const query = new URLSearchParams({ depositAddress });
-    if (typeof depositMemo === 'string' && depositMemo) query.set('depositMemo', depositMemo);
-    const data = await oneClick(`/status?${query.toString()}`, { method: 'GET' });
-    res.json({ ...data, terminal: TERMINAL.has(data.status) });
-  } catch (error) { res.status(error.status || 502).json({ error: error.message }); }
-});
-
-if (!process.env.VERCEL) app.listen(PORT, () => console.log(`XoDuspay API listening on :${PORT}`));
-
-export default app;
- + usdValue.toFixed(4) + ' USD)' : '';
+      const usdLabel = Number.isFinite(usdValue) && usdValue > 0
+        ? ' (approximately $' + usdValue.toFixed(4) + ' USD)'
+        : '';
       return res.status(400).json({
         error: 'This NEAR Intents route requires at least ' + minimumLabel + usdLabel + '. This is a bridge/solver minimum for the selected route, not a XoDuspay-wide minimum. No deposit address was created. Try a higher amount or another supported route.',
         minimumAmount: minimumAtomic,
@@ -721,6 +690,7 @@ export default app;
       });
     }
     res.status(error.status || 502).json({ error: error.message });
+
   }
 });
 
