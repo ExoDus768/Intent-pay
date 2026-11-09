@@ -206,18 +206,9 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
   const walletConnectProviderRef = useRef(null);
   const getSolanaConnection = () => {
     if (!solanaConnectionRef.current) {
-      const configured = import.meta.env.VITE_SOLANA_RPC_URL;
-      // Prefer an independent public provider before any project-configured
-      // endpoint: the configured endpoint may be the one returning HTTP 403.
-      const endpoints = [...new Set([
-        'https://solana-rpc.publicnode.com',
-        configured,
-        'https://api.mainnet.solana.com',
-        'https://api.mainnet-beta.solana.com',
-        'https://free.rpcpool.com'
-      ].filter(Boolean))];
-      let activeIndex = 0;
-      const connections = endpoints.map(endpoint => new Connection(endpoint, 'confirmed'));
+      // Send Solana RPC through our same-origin backend proxy. This avoids
+      // browser-origin/IP restrictions on public RPC endpoints and centralizes failover.
+      const connections = [new Connection('/api/solana/rpc', 'confirmed')];
       const activeConnection = () => connections[activeIndex];
       // Keep the standard web3.js Connection interface, but retry failed RPC
       // methods against public mainnet providers when one endpoint blocks traffic.
