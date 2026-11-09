@@ -135,7 +135,7 @@ function getToken(tokens, assetId) {
 function formatAtomicAmount(value, decimals) {
   const raw = String(value);
   const precision = Number(decimals);
-  if (!/^\\d+$/.test(raw) || !Number.isInteger(precision) || precision < 0 || precision > 255) return null;
+  if (!/^\d+$/.test(raw) || !Number.isInteger(precision) || precision < 0 || precision > 255) return null;
   if (precision === 0) return raw;
   const padded = raw.padStart(precision + 1, '0');
   const whole = padded.slice(0, -precision);
@@ -348,7 +348,7 @@ function normalizeHistoryDate(value, fallback) {
   if (typeof value === 'number') {
     if (!Number.isFinite(value)) date = null;
     else date = new Date(value);
-  } else if (typeof value === 'string' && !/^[-+]?\\d+$/.test(value.trim())) {
+  } else if (typeof value === 'string' && !/^[-+]?\d+$/.test(value.trim())) {
     date = new Date(value);
   } else {
     date = null;
@@ -663,7 +663,7 @@ app.post('/api/quote', quoteLimiter, async (req, res) => {
     }
     res.json({ ...data, xoduspay: { origin: input.origin, destination: input.destination } });
   } catch (error) {
-    const bridgeMinimum = String(error.providerMessage || '').match(/(?:try\\s+at\\s+least|minimum(?:\\s+amount)?(?:\\s+is)?\\s*[:=]?)\\s*([0-9]+)/i);
+    const bridgeMinimum = String(error.providerMessage || '').match(/(?:try\s+at\s+least|minimum(?:\s+amount)?(?:\s+is)?\s*[:=]?)\s*([0-9]+)/i);
     if (bridgeMinimum) {
       const minimumAtomic = bridgeMinimum[1];
       const amountToken = input.swapType === 'EXACT_OUTPUT' ? input.destination : input.origin;
