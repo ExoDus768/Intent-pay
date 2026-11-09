@@ -182,9 +182,10 @@ export default function MerchantTools({ open = false, onClose = () => {}, tokens
             <label htmlFor="intentpay-payout-token">Payout token on {destinationChain.toUpperCase()}</label>
             <select id="intentpay-payout-token" value={destinationAsset} onChange={e => setDestinationAsset(e.target.value)} disabled={payoutTokens.length === 0}>
               <option value="">{payoutTokens.length ? 'Choose a payout token' : 'No supported tokens on this network'}</option>
-              {payoutTokens.map(t => <option key={t.assetId} value={t.assetId}>{t.symbol || 'TOKEN'}{t.name ? ' · ' + t.name : ''}</option>)}
+              {payoutTokens.map(t => <option key={t.assetId} value={t.assetId}>{t.symbol || 'TOKEN'}{String(t.assetId || '').toLowerCase() === 'nep141:wrap.near' ? ' (you receive native NEAR)' : t.name ? ' · ' + t.name : ''}</option>)}
             </select>
-            {payoutTokens.length === 0 && <p className="merchant-error">No payout tokens are currently available for this network in the live NEAR Intents registry. Choose another network.</p>}
+            {destinationChain === 'near' && payoutTokens.some(t => String(t.assetId || '').toLowerCase() === 'nep141:wrap.near') && <p className="merchant-hint">Select WNEAR for NEAR Intents. Your payout will arrive in your NEAR account as native NEAR.</p>}
+          {payoutTokens.length === 0 && <p className="merchant-error">No payout tokens are currently available for this network in the live NEAR Intents registry. Choose another network.</p>}
           </> : <p className="merchant-hint">Choose a payout network first. Only tokens supported on that network will appear here.</p>}
           <label htmlFor="intentpay-recipient">Your receiving wallet address</label>
           <input id="intentpay-recipient" value={recipient} onChange={e => setRecipient(isNearPayout ? e.target.value.toLowerCase().trim() : e.target.value.trim())} placeholder={isNearPayout ? 'merchant.near' : isSolanaPayout ? 'Solana wallet address' : isEvmPayout ? '0x…' : 'Unsupported payout network'} autoCapitalize="none" autoCorrect="off" spellCheck={false} />
