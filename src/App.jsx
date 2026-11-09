@@ -132,6 +132,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
   const [followMenuOpen, setFollowMenuOpen] = useState(false);
   const [merchantWorkspaceOpen, setMerchantWorkspaceOpen] = useState(new URLSearchParams(window.location.search).get('workspace') === 'merchant');
   const [originChain, setOriginChain] = useState('');
+  const [bnbWarningOpen, setBnbWarningOpen] = useState(false);
   const [originAsset, setOriginAsset] = useState('');
   const [originSearch, setOriginSearch] = useState('');
   const [walletTokenBalances, setWalletTokenBalances] = useState({});
@@ -882,6 +883,11 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
   }
 
   async function createQuote() {
+    if (originChain === 'bsc' || tokenChain(origin || {}) === 'bsc') {
+      setQuote(null); setGasEstimate(null);
+      setNotice('BNB Smart Chain payments are temporarily unavailable. Choose another payment network.');
+      return;
+    }
     const requestId = ++quoteRequestRef.current;
     setQuote(null); setGasEstimate(null); setTxHash(''); setSwapStatus('');
     if (!sourceWallet) return setNotice(isNearToken(origin || {}) ? 'Connect your NEAR wallet first. It will be used for refunds.' : isSolanaToken(origin || {}) ? 'Connect your Solana wallet first. It will be used for refunds.' : 'Connect your EVM wallet first. The connected address is used for refunds.');
@@ -960,7 +966,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
 
   useEffect(() => {
     const complete = Boolean(
-      origin && destination && amount && Number(amount) > 0 &&
+      originChain !== 'bsc' && tokenChain(origin || {}) !== 'bsc' && origin && destination && amount && Number(amount) > 0 &&
       recipient.trim() && sourceWallet
     );
     // Any changed checkout detail invalidates the old quote and requests a fresh one.
@@ -979,6 +985,10 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
   }, [configured, originAsset, destinationAsset, amount, recipient, wallet, nearWallet, solWallet, tokens]);
 
   async function sendDeposit() {
+    if (originChain === 'bsc' || tokenChain(origin || {}) === 'bsc') {
+      setQuote(null); setNotice('BNB Smart Chain payments are temporarily unavailable. No transaction was sent. Choose another payment network.');
+      return;
+    }
     if (!quote?.quote || !origin) return;
     let activeQuote = quote;
     if (!activeQuote.quote.depositAddress) {
@@ -1243,11 +1253,11 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
     <nav className={checkoutOnly ? "nav customer-nav" : "nav"}><div className="site-menu-wrap" ref={siteMenuWrapRef}><button type="button" className="hamburger-btn" aria-label="Open navigation menu" aria-expanded={siteMenuOpen} onClick={() => setSiteMenuOpen(open => !open)}><span></span><span></span><span></span></button>{siteMenuOpen && <div className="site-menu"><button type="button" className="site-menu-primary" onClick={() => { setSiteMenuOpen(false); setMerchantWorkspaceOpen(true); }}><span><b>01</b> Merchant workspace</span><span>↗</span></button><a href="#how-it-works" onClick={() => setSiteMenuOpen(false)}>How it works</a><a href="#checkout" onClick={() => setSiteMenuOpen(false)}>Supported networks</a><a href="https://github.com/ExoDus768/Intent-pay#readme" target="_blank" rel="noreferrer" onClick={() => setSiteMenuOpen(false)}>Documentation <span>↗</span></a><a href="https://github.com/ExoDus768/Intent-pay" target="_blank" rel="noreferrer" onClick={() => setSiteMenuOpen(false)}>GitHub repository <span>↗</span></a><div className="follow-menu-wrap" ref={followMenuWrapRef}><button type="button" className="follow-menu-trigger" aria-expanded={followMenuOpen} aria-haspopup="true" onClick={() => setFollowMenuOpen(open => !open)}>Follow Us <span>{followMenuOpen ? '⌃' : '›'}</span></button>{followMenuOpen && <div className="follow-submenu"><div className="follow-submenu-title">Follow XoDuspay</div><a className="follow-link-placeholder" href="https://x.com/Intent_Payy" target="_blank" rel="noreferrer"><strong>Follow XoDuspay on X</strong><small>@Intent_Payy ↗</small></a></div>}</div></div>}</div><a className="brand" href="#"><span className="brand-mark">X</span> XoDuspay</a><div className="nav-right"><span className="status"><i />{health}</span><div className="wallet-menu-wrap" ref={walletMenuWrapRef}><button type="button" className="wallet-btn" onClick={() => setWalletMenuOpen(open => !open)} disabled={!!walletAction}>{walletAction === 'evm' ? 'Connecting EVM…' : walletAction === 'near' ? 'Opening NEAR…' : walletAction === 'solana' ? 'Connecting Solana…' : walletAction === 'walletconnect' ? 'Connecting…' : wallet || nearWallet || solWallet ? short(wallet || nearWallet || solWallet) : 'Connect Wallet'} <span aria-hidden="true">⌄</span></button>{walletMenuOpen && <div className="wallet-menu"><button type="button" onClick={() => { setWalletFeedback('Starting EVM connection…'); connectWallet(); }} disabled={walletAction === 'evm'}><strong>EVM Wallet</strong><small>MetaMask, Zerion and other EVM wallets</small>{wallet && <small>Connected: {short(wallet)}</small>}</button><button type="button" onClick={() => { setWalletFeedback('Starting Solana connection…'); connectSolanaWallet(); }} disabled={walletAction === 'solana'}><strong>Solana Wallet</strong><small>Phantom and compatible Solana wallets</small>{solWallet && <small>Connected: {short(solWallet)}</small>}</button><button type="button" onClick={() => { setWalletFeedback('Starting NEAR connection…'); connectNearWallet(); }} disabled={walletAction === 'near'}><strong>NEAR Wallet</strong><small>MyNearWallet and supported NEAR wallets</small>{nearWallet && <small>Connected: {short(nearWallet)}</small>}</button><button type="button" onClick={connectMeteorWalletApp} disabled={walletAction === 'meteor-app'}><strong>Meteor Wallet App</strong><small>Connect directly inside Meteor’s in-app browser</small>{nearWallet && <small>Connected: {short(nearWallet)}</small>}</button><button type="button" onClick={() => { setWalletFeedback('Starting WalletConnect…'); connectWalletConnect(); }} disabled={walletAction === 'walletconnect'}><strong>WalletConnect</strong><small>Scan a QR code or open a compatible mobile wallet</small></button><div className="wallet-menu-feedback" role="status" aria-live="polite">{walletFeedback}</div></div>}</div></div></nav>
     {!checkoutOnly && <MerchantTools tokens={tokens} defaultRecipient={wallet || nearWallet} open={merchantWorkspaceOpen} onClose={() => setMerchantWorkspaceOpen(false)} />}
     {!checkoutOnly && <section className="hero" id="how-it-works"><div className="eyebrow">UNIVERSAL CHECKOUT · POWERED BY NEAR INTENTS</div><h1>One checkout.<br/><span>Crypto payments, simplified.</span></h1><p>Merchants configure one reusable checkout. Customers pay with a supported wallet and asset while the merchant receives their chosen payout token.</p></section>}
-    <section className="checkout" id="checkout">{isWidgetCheckout && <div className="checkout-banner"><span className="eyebrow">{checkoutOnly ? 'MERCHANT PAYMENT' : 'PAYMENT REQUEST'}</span><strong>{isFixedWidgetCheckout ? "$" + Number(merchantAmountParam).toFixed(2) + " USD worth of " + (destination?.symbol || "payout token") : "Variable amount"}</strong><p>{checkoutParams.get("merchantName") || "Merchant payment"} · {fixedOutputCheckout ? "Fixed USD price. The equivalent " + (destination?.symbol || "payout token") + " amount is calculated using its live price." : "Customer chooses the amount."}</p></div>}
+    <section className="checkout" id="checkout">{bnbWarningOpen && originChain === 'bsc' && <div role="dialog" aria-modal="true" aria-labelledby="bnb-warning-title" style={{ position: 'fixed', inset: 0, zIndex: 10000, background: 'rgba(10,16,30,.72)', display: 'grid', placeItems: 'center', padding: 20 }}><div style={{ width: 'min(100%, 420px)', background: '#fff', color: '#172033', borderRadius: 20, padding: 24, boxShadow: '0 20px 60px rgba(0,0,0,.28)' }}><div style={{ fontSize: 30, marginBottom: 10 }}>⚠️</div><h2 id="bnb-warning-title" style={{ margin: '0 0 10px' }}>BNB Chain payments unavailable</h2><p style={{ lineHeight: 1.55, color: '#596579' }}>We haven’t been able to verify a working payment route for BNB Smart Chain. To prevent a failed transaction, XoDuspay has paused checkout on this network.</p><p style={{ lineHeight: 1.55, color: '#596579' }}>No funds will be sent. Please choose another supported payment network.</p><button type="button" className="primary" style={{ width: '100%' }} onClick={() => { setOriginChain(''); setOriginAsset(''); setOriginSearch(''); setBnbWarningOpen(false); setNotice('Choose another supported payment network to continue.'); }}>Choose another network</button></div></div>}{isWidgetCheckout && <div className="checkout-banner"><span className="eyebrow">{checkoutOnly ? 'MERCHANT PAYMENT' : 'PAYMENT REQUEST'}</span><strong>{isFixedWidgetCheckout ? "$" + Number(merchantAmountParam).toFixed(2) + " USD worth of " + (destination?.symbol || "payout token") : "Variable amount"}</strong><p>{checkoutParams.get("merchantName") || "Merchant payment"} · {fixedOutputCheckout ? "Fixed USD price. The equivalent " + (destination?.symbol || "payout token") + " amount is calculated using its live price." : "Customer chooses the amount."}</p></div>}
       <div className="checkout-head"><div><div className="eyebrow">MAINNET SECURE CHECKOUT</div><h2>{checkoutOnly ? 'Complete payment' : 'Configure payment'}</h2></div><span className="mainnet-pill">MAINNET</span></div>
       <form onSubmit={e => e.preventDefault()}>
         <label>Payment network</label>
-        <select value={originChain} onChange={e => { setOriginChain(e.target.value); setOriginAsset(''); setOriginSearch(''); }} required disabled={loadingTokens}>
+        <select value={originChain} onChange={e => { const next = e.target.value; setOriginChain(next); setOriginAsset(''); setOriginSearch(''); setQuote(null); setBnbWarningOpen(next === 'bsc'); }} required disabled={loadingTokens}>
           <option value="">{loadingTokens ? 'Loading supported networks…' : 'Choose the network holding your token'}</option>
           {originChains.map(chain => <option key={chain} value={chain}>{chainLabel(chain)}</option>)}
         </select>
