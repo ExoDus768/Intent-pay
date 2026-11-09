@@ -25,7 +25,6 @@ export default function MerchantTools({ open = false, onClose = () => {}, tokens
       matic: 'polygon', pol: 'polygon', ftm: 'fantom', bera: 'berachain',
       sol: 'solana', xdai: 'gnosis'
     };
-    if (String(arguments[1] || '').toLowerCase() === 'nep141:wrap.near') return 'near';
     return aliases[raw] || raw;
   };
   const chainOf = t => String(t?.assetId || '').toLowerCase() === 'nep141:wrap.near' ? 'near' : normalizeChain(t?.blockchain);
@@ -44,10 +43,11 @@ export default function MerchantTools({ open = false, onClose = () => {}, tokens
   const payoutTokens = useMemo(() => tokens
     .filter(t => t?.assetId && destinationChain && chainOf(t) === destinationChain)
     .sort((a, b) => {
-      const priority = symbol => ({ USDC: 0, USDT: 1, WNEAR: 2, NEAR: 3 }[String(symbol || '').toUpperCase()] ?? 10);
-      return priority(a.symbol) - priority(b.symbol) || String(a.symbol || '').localeCompare(String(b.symbol || ''));
+      const priority = token => String(token?.assetId || '').toLowerCase() === 'nep141:wrap.near' ? 2 : ({ USDC: 0, USDT: 1, NEAR: 2, WNEAR: 3 }[String(token?.symbol || '').toUpperCase()] ?? 10);
+      return priority(a) - priority(b) || String(a.symbol || '').localeCompare(String(b.symbol || ''));
     }), [tokens, destinationChain]);
   const selected = tokens.find(t => String(t.assetId) === String(destinationAsset) && chainOf(t) === destinationChain);
+  const displayTokenSymbol = t => String(t?.assetId || '').toLowerCase() === 'nep141:wrap.near' ? 'NEAR' : (t?.symbol || 'TOKEN');
   const payoutChain = chainOf(selected || {});
   const isNearPayout = payoutChain === 'near';
   const isSolanaPayout = payoutChain === 'solana';
