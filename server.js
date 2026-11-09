@@ -5,6 +5,7 @@ import { createHash, createHmac, randomBytes, timingSafeEqual, createPublicKey, 
 import { verifyMessage, JsonRpcProvider, Interface, isAddress } from 'ethers';
 import { del as delBlob, get as getBlob, list as listBlobs, put as putBlob } from '@vercel/blob';
 import { rateLimit } from 'express-rate-limit';
+import { resolve } from 'node:path';
 
 const app = express();
 const PORT = Number(process.env.PORT || 3001);
@@ -725,6 +726,11 @@ app.get('/api/status', async (req, res) => {
   } catch (error) { res.status(error.status || 502).json({ error: error.message }); }
 });
 
-if (!process.env.VERCEL) app.listen(PORT, () => console.log(`XoDuspay API listening on :${PORT}`));
+if (!process.env.VERCEL) {
+  const distPath = resolve(process.cwd(), 'dist');
+  app.use(express.static(distPath));
+  app.get('*', (_req, res) => res.sendFile(resolve(distPath, 'index.html')));
+  app.listen(PORT, '0.0.0.0', () => console.log(`XoDuspay web + API listening on :${PORT}`));
+}
 
 export default app;
