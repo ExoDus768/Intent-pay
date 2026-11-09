@@ -726,6 +726,33 @@ app.get('/api/status', async (req, res) => {
   } catch (error) { res.status(error.status || 502).json({ error: error.message }); }
 });
 
+
+app.get('/api/transactions/lookup', paymentActionLimiter, async (req, res) => {
+  const search = String(req.query?.search || '').trim();
+  // Accept only an exact EVM transaction hash; never expose a general transaction-search proxy.
+  if (!/^0x[a-fA-F0-9]{64}$/.test(search)) {
+    return res.status(400).json({ error: 'A valid EVM transaction hash is required.' });
+  }
+  try {
+    const query = new URLSearchParams({ search, numberOfTransactions: '10', statuses: 'SUCCESS,FAILED,PROCESSING,REFUNDED,INCOMPLETE_DEPOSIT,PENDING_DEPOSIT' });
+    const data = await oneClick('/transactions?' + query.toString(), { method: 'GET' });
+    const rows = Array.isArray(data) ? data : (data?.transactions || data?.data || []);
+    const matches = rows.filter(row =>
+      Array.isArray(row.originChainTxHashes) && row.originChainTxHashes.some(hash => String(hash).toLowerCase() === search.toLowerCase()) ||
+      Array.isArray(row.destinationChainTxHashes) && row.destinationChainTxHashes.some(hash => String(hash).toLowerCase() === search.toLowerCase())
+    ).map(row => ({
+      originAsset: row.originAsset, destinationAsset: row.destinationAsset, recipient: row.recipient,
+      status: row.status, createdAt: row.createdAt, intentHashes: row.intentHashes,
+      nearTxHashes: row.nearTxHashes, originChainTxHashes: row.originChainTxHashes,
+      destinationChainTxHashes: row.destinationChainTxHashes,
+      amountInFormatted: row.amountInFormatted, amountOutFormatted: row.amountOutFormatted,
+      amountOut: row.amountOut
+    }));
+    res.set('Cache-Control', 'private, no-store');
+    res.json({ matches });
+  } catch (error) { res.status(error.status || 502).json({ error: error.message }); }
+});
+
 if (!process.env.VERCEL) {
   const distPath = resolve(process.cwd(), 'dist');
   app.use(express.static(distPath));
