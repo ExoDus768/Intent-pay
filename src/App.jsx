@@ -35,7 +35,7 @@ const tokenChain = t => normalizeBlockchain(t?.blockchain, t?.assetId);
 const isNearToken = t => tokenChain(t) === 'near';
 const isSolanaToken = t => tokenChain(t) === 'solana';
 const tokenId = t => t.assetId || '';
-const displayTokenSymbol = t => String(t?.assetId || '').toLowerCase() === 'nep141:wrap.near' ? 'NEAR' : (t?.symbol || 'TOKEN');
+const displayTokenSymbol = t => String(t?.assetId || '').toLowerCase() === 'nep141:wrap.near' ? 'NEAR (native)' : (t?.symbol || 'TOKEN');
 const tokenName = t => `${displayTokenSymbol(t)} · ${t.blockchain || 'Unknown chain'}`;
 const chainLabel = value => ({eth:'Ethereum',arb:'Arbitrum',op:'Optimism',avax:'Avalanche',bera:'Berachain'}[value] || String(value || '').split(/[-_ ]+/).map(x => x.charAt(0).toUpperCase() + x.slice(1)).join(' '));
 const normalizeBlockchain = (value, assetId = '') => {
