@@ -395,7 +395,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
           await new Promise(resolve => setTimeout(resolve, 100));
         }
         const nearWalletModules = [
-          ...(window.nightly?.near ? [setupNightly()] : []),
+          setupNightly(),
           setupMeteorWallet(),
           setupMeteorWalletApp({ contractId: 'wrap.near' }),
           setupHotWallet(),
@@ -1010,14 +1010,15 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
     setWalletAction('near');
     setWalletFeedback('Connecting to Nightly on NEAR mainnet…');
     try {
-      if (!window.nightly?.near) {
-        throw new Error('Nightly NEAR provider was not detected. Open XoDuspay from Nightly’s in-app browser and refresh the page.');
+      const nightlyProvider = window.nightly?.near || window.near;
+      if (!nightlyProvider) {
+        throw new Error('Nightly NEAR provider was not detected. Open XoDuspay inside Nightly and refresh the page.');
       }
       if (!nearSelector) {
         throw new Error('NEAR wallet selector is still initializing. Refresh XoDuspay inside Nightly and try again.');
       }
       const nightlyWallet = await nearSelector.wallet('nightly');
-      const accounts = await nightlyWallet.signIn();
+      const accounts = await nightlyWallet.signIn({ contractId: 'wrap.near', methodNames: [] });
       const accountId = accounts?.[0]?.accountId || '';
       if (!accountId) throw new Error('Nightly did not return a NEAR account. Unlock Nightly and approve the connection request.');
       setNearWallet(accountId);
