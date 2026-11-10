@@ -261,13 +261,22 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
   const walletMenuWrapRef = useRef(null);
   const followMenuWrapRef = useRef(null);
 
-  // Dismiss open menus when the user taps outside them or presses Escape.
+  // Dismiss open menus on outside taps/clicks. Capture phase makes this
+  // reliable on mobile browsers and prevents child handlers from swallowing it.
   useEffect(() => {
     if (!siteMenuOpen && !walletMenuOpen && !followMenuOpen) return undefined;
-    const handlePointerDown = event => {
-      if (siteMenuOpen && !siteMenuWrapRef.current?.contains(event.target)) { setSiteMenuOpen(false); setFollowMenuOpen(false); }
-      if (walletMenuOpen && !walletMenuWrapRef.current?.contains(event.target)) setWalletMenuOpen(false);
-      if (followMenuOpen && !followMenuWrapRef.current?.contains(event.target)) setFollowMenuOpen(false);
+    const isInside = (ref, event) => {
+      const node = ref.current;
+      if (!node) return false;
+      return node.contains(event.target) || Boolean(event.composedPath?.().includes(node));
+    };
+    const handleOutsideInteraction = event => {
+      if (siteMenuOpen && !isInside(siteMenuWrapRef, event)) {
+        setSiteMenuOpen(false);
+        setFollowMenuOpen(false);
+      }
+      if (walletMenuOpen && !isInside(walletMenuWrapRef, event)) setWalletMenuOpen(false);
+      if (followMenuOpen && !isInside(followMenuWrapRef, event)) setFollowMenuOpen(false);
     };
     const handleKeyDown = event => {
       if (event.key === 'Escape') {
@@ -276,10 +285,12 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
         setWalletMenuOpen(false);
       }
     };
-    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('pointerdown', handleOutsideInteraction, true);
+    document.addEventListener('click', handleOutsideInteraction, true);
     document.addEventListener('keydown', handleKeyDown);
     return () => {
-      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('pointerdown', handleOutsideInteraction, true);
+      document.removeEventListener('click', handleOutsideInteraction, true);
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, [siteMenuOpen, walletMenuOpen, followMenuOpen]);
