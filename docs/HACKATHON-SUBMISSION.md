@@ -27,7 +27,7 @@ Merchants publish one hosted link, QR code or website button. Customers pay from
 2. **0:20–0:50 — Merchant setup:** Open /merchant. Select payout network/token, receiving address and fixed or variable amount.
 3. **0:50–1:15 — Publish:** Show the hosted checkout link, QR code and embed snippet.
 4. **1:15–1:50 — Customer checkout:** Open the hosted checkout, select an available source asset and connect a supported wallet. Show the live 1Click quote.
-5. **1:50–2:30 — Payment proof:** Show the real ETH-to-NEAR mainnet transaction and the corresponding 1Click SUCCESS status. Never substitute a mock transaction or invented hash.
+5. **1:50–2:30 — Payment proof:** Show the ETH-to-NEAR mainnet test record. The builder reported that the transfer worked, but the exact explorer hash and matching 1Click SUCCESS evidence are not yet in this submission pack. Add and verify both before calling it completed settlement. Never substitute a mock transaction or invented hash.
 6. **2:30–2:45 — Network status:** Show the verified network list and explicitly mark BNB Smart Chain (BSC) as pending verification.
 7. **2:45–3:00 — Close:** Return to the landing page and state the value proposition.
 
@@ -61,6 +61,7 @@ The live 1Click registry can list assets that do not have a corresponding browse
 - [ ] Confirm the live app and /merchant workspace load.
 - [ ] Publish the demo post on X. It must say the project was built at NEAR HACKATHON, tag @NEARProtocol, include #NEARHackathon, and attach the demo video or screenshots.
 - [ ] Copy the public X post URL.
+- [ ] Verify the ETH-to-NEAR explorer transaction hash and matching 1Click SUCCESS record, or remove any claim of completed settlement from the demo.
 - [ ] Have the NEAR account address ready for potential prize payout.
 - [ ] Complete the official form with the repository URL and demo-post URL before **14 November 2026, 23:59 UTC**.
 - [ ] Review every field before submitting. The official site says to submit once per project.
