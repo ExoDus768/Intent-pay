@@ -1413,12 +1413,22 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
             'ft_transfer', { receiver_id: depositAddress, amount: amountIn }, 50000000000000n, 1n
           )] }];
         }
-        sessionStorage.setItem('xoduspay_pending_near', JSON.stringify({ quote: activeQuote, originAsset, destinationAsset, recipient, nearWallet }));
-        const result = await walletClient.signAndSendTransactions({ transactions, callbackUrl: window.location.href });
-        const hash = result?.[0]?.transaction?.hash || result?.[0]?.transaction_outcome?.id || result?.transaction?.hash;
+        const isNightlyWallet = walletClient.id === 'nightly';
+        // Nightly is an injected wallet: it signs and broadcasts in-place and
+        // returns a FinalExecutionOutcome. Do not use the browser-wallet callback
+        // redirect flow for it; that can leave the checkout showing a false
+        // "processing" state without a transaction hash.
+        if (!isNightlyWallet) {
+          sessionStorage.setItem('xoduspay_pending_near', JSON.stringify({ quote: activeQuote, originAsset, destinationAsset, recipient, nearWallet }));
+        }
+        const result = isNightlyWallet
+          ? await walletClient.signAndSendTransaction({ signerId: nearWallet, receiverId: transactions[0].receiverId, actions: transactions[0].actions })
+          : await walletClient.signAndSendTransactions({ transactions, callbackUrl: window.location.href });
+        const hash = result?.transaction?.hash || result?.transaction_outcome?.id ||
+          result?.[0]?.transaction?.hash || result?.[0]?.transaction_outcome?.id;
         if (!hash) {
-          setTxHash('NEAR transaction submitted — hash unavailable');
-          setNotice('Your NEAR wallet did not return a transaction hash. Refresh payment status before attempting anything again.');
+          sessionStorage.removeItem('xoduspay_pending_near');
+          setNotice('Nightly did not return a broadcast transaction hash. No payment has been recorded. Check Nightly activity before trying again.');
           return;
         }
         sessionStorage.removeItem('xoduspay_pending_near');
