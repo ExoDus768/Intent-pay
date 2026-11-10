@@ -1009,7 +1009,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
     try {
       if (!nearSelector) throw new Error('NEAR wallet setup is still initializing. Wait a few seconds and try again.');
       const mobileWallet = await nearSelector.wallet('near-mobile-wallet');
-      const accounts = await mobileWallet.signIn();
+      const accounts = await mobileWallet.signIn({ contractId: 'wrap.near', methodNames: [] });
       const accountId = accounts?.[0]?.accountId || (await mobileWallet.getAccounts())?.[0]?.accountId;
       if (!accountId) throw new Error('NEAR Mobile did not return an account. Approve the connection in NEAR Mobile and try again.');
       setNearWalletProviderId('near-mobile-wallet');
