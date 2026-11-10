@@ -4,6 +4,7 @@ import { actionCreators, setupWalletSelector } from '@near-wallet-selector/core'
 import { setupModal } from '@near-wallet-selector/modal-ui';
 import { setupMyNearWallet } from '@near-wallet-selector/my-near-wallet';
 import { setupNearMobileWallet } from '@near-wallet-selector/near-mobile-wallet';
+import { setupNightly } from '@near-wallet-selector/nightly';
 import { setupMeteorWallet } from '@near-wallet-selector/meteor-wallet';
 import { setupMeteorWalletApp } from '@near-wallet-selector/meteor-wallet-app';
 import { setupHotWallet } from '@near-wallet-selector/hot-wallet';
@@ -397,6 +398,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
           optimizeWalletOrder: true,
           modules: [
             setupNearMobileWallet(),
+            setupNightly(),
             setupMeteorWallet(),
             setupMeteorWalletApp({ contractId: 'wrap.near' }),
             setupHotWallet(),
