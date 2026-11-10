@@ -387,34 +387,67 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
     let active = true;
     (async () => {
       try {
-        // Give Nightly's in-app browser time to inject its NEAR provider.
-        // If absent, skip only Nightly; never let it prevent other NEAR wallets
-        // (especially NEAR Mobile) from initializing.
-        const nightlyWaitStarted = Date.now();
-        while (!window.nightly?.near && Date.now() - nightlyWaitStarted < 10000) {
-          await new Promise(resolve => setTimeout(resolve, 100));
-        }
-        const nearWalletModules = [
-          // Nightly's adapter waits for its injected provider during initialization.
-          // Register it only when the app is actually opened in Nightly; otherwise
-          // it can reject the entire selector setup and hide every other NEAR wallet.
-          ...(window.nightly?.near ? [setupNightly()] : []),
+        // Do not block the whole wallet selector while waiting for Nightly.
+        // Nightly's adapter requires its injected NEAR provider to be fully ready.
+        const nightlyProvider = window.nightly?.near;
+        const nightlyReady = Boolean(
+          nightlyProvider &&
+          typeof nightlyProvider.connect === 'function' &&
+          typeof nightlyProvider.disconnect === 'function' &&
+          typeof nightlyProvider.signTransaction === 'function'
+        );
+        const walletSelectorConfig = {
+          network: { networkId: 'mainnet', nodeUrl: NEAR_RPC_ENDPOINTS[0] },
+          createAccessKeyFor: { contractId: 'wrap.near', methodNames: [] },
+          optimizeWalletOrder: true
+        };
+        const mobileWalletModule = setupNearMobileWallet({
+          dAppMetadata: {
+            name: 'XoDuspay',
+            logoUrl: 'https://xoduspay-exo-c836.vercel.app/favicon.ico',
+            url: 'https://xoduspay-exo-c836.vercel.app'
+          }
+        });
+        const coreWalletModules = [
           setupMeteorWallet(),
           setupMeteorWalletApp({ contractId: 'wrap.near' }),
           setupHotWallet(),
           setupSender(),
           setupMyNearWallet(),
-          setupNearMobileWallet({ dAppMetadata: { name: 'XoDuspay', logoUrl: 'https://xoduspay-exo-c836.vercel.app/favicon.ico', url: 'https://xoduspay-exo-c836.vercel.app' } })
+          mobileWalletModule
         ];
-        const selector = await setupWalletSelector({
-          network: { networkId: 'mainnet', nodeUrl: NEAR_RPC_ENDPOINTS[0] },
-          createAccessKeyFor: {
-            contractId: 'wrap.near',
-            methodNames: []
-          },
-          optimizeWalletOrder: true,
-          modules: nearWalletModules
-        });
+        let selector;
+        let nightlyInitializationError = null;
+        if (nightlyReady) {
+          try {
+            selector = await setupWalletSelector({
+              ...walletSelectorConfig,
+              modules: [setupNightly(), ...coreWalletModules]
+            });
+          } catch (nightlyError) {
+            nightlyInitializationError = nightlyError;
+            console.error('Nightly adapter initialization failed; retrying without Nightly so NEAR Mobile and other wallets remain usable:', nightlyError);
+          }
+        }
+        if (!selector) {
+          try {
+            selector = await setupWalletSelector({
+              ...walletSelectorConfig,
+              modules: coreWalletModules
+            });
+          } catch (coreError) {
+            console.error('Full NEAR wallet initialization failed; retrying with the independent mobile and browser wallet adapters:', coreError);
+            selector = await setupWalletSelector({
+              ...walletSelectorConfig,
+              modules: [mobileWalletModule, setupMyNearWallet()]
+            });
+          }
+        }
+        if (nightlyInitializationError) {
+          setNotice('Nightly could not initialize in this browser session. NEAR Mobile and the other NEAR wallets are available; open XoDuspay inside Nightly to enable its connection.');
+        } else if (!nightlyReady) {
+          setNotice('NEAR wallets are ready. To connect Nightly, open XoDuspay inside the Nightly app browser.');
+        }
         const modal = setupModal(selector, { contractId: 'wrap.near' });
         if (!active) return;
         setNearSelector(selector);
