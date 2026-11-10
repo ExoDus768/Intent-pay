@@ -33,6 +33,23 @@ The server keeps the 1Click JWT private. The browser never receives the API secr
 - Assets are sourced from the live 1Click registry.
 - The checkout has no testnet or simulated-payment mode. Wallet approvals move real assets.
 
+## Judge quick test (do X, see Y)
+
+Use the deployed mainnet app. This prototype moves real assets; test only with a small amount you can afford to lose.
+
+| Do this | Expected result |
+|---|---|
+| Open the landing page | Product overview and navigation load |
+| Open /merchant | Merchant checkout configuration appears |
+| Select a payout network/token, receiving address and amount mode | Merchant payout configuration is reflected in checkout setup |
+| Generate the checkout link and open it | Customer checkout loads with the merchant configuration |
+| Connect a supported wallet and select an available source asset | Wallet and selected source asset are displayed |
+| Request a quote | A committed 1Click quote and deposit instructions are returned if that route/amount is supported |
+| Review and approve the wallet transaction | Wallet prompts the customer to authorize the payment |
+| Wait for 1Click status | Only 1Click SUCCESS confirms completed destination delivery |
+
+If a quote is rejected or no deposit address is created, stop; do not describe that attempt as a completed payment. Route availability and minimums come from the live 1Click response.
+
 ## Demo flow
 
 1. Open the XoDuspay homepage.
@@ -81,3 +98,7 @@ BSC must not be presented as tested or relied on for a live checkout until walle
 - Direct EVM fallback supports ERC-20 tokens only and only for an exact same-token, same-network payout.
 - Other non-EVM wallet deposit flows are not implemented, even if their assets appear in the live registry as payout options.
 - The app is a hackathon prototype, not an audited payment processor. Do not use it for high-value production payments without a full security review.
+
+## Submission materials
+
+See [docs/HACKATHON-SUBMISSION.md](./docs/HACKATHON-SUBMISSION.md) for the form-ready project description, X demo-post draft, three-minute demo sequence, judge walkthrough and final checklist.
