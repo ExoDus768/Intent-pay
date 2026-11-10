@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { BrowserProvider, Contract, Interface, formatUnits, isAddress, parseUnits } from 'ethers';
-import { actionCreators } from '@near-wallet-selector/core';
-import { NearConnector } from '@hot-labs/near-connect';
+import { actionCreators, setupWalletSelector } from '@near-wallet-selector/core';
+import { setupModal } from '@near-wallet-selector/modal-ui';
+import { setupMyNearWallet } from '@near-wallet-selector/my-near-wallet';
+import { setupNearMobileWallet } from '@near-wallet-selector/near-mobile-wallet';
+import { setupNightly } from '@near-wallet-selector/nightly';
+import { setupMeteorWallet } from '@near-wallet-selector/meteor-wallet';
+import { setupMeteorWalletApp } from '@near-wallet-selector/meteor-wallet-app';
+import { setupHotWallet } from '@near-wallet-selector/hot-wallet';
+import { setupSender } from '@near-wallet-selector/sender';
 import '@near-wallet-selector/modal-ui/styles.css';
 import { EthereumProvider } from '@walletconnect/ethereum-provider';
 import { Connection, PublicKey, SystemProgram, Transaction, LAMPORTS_PER_SOL } from '@solana/web3.js';
@@ -159,6 +166,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
   const [nearWallet, setNearWallet] = useState('');
   const [solWallet, setSolWallet] = useState('');
   const [nearSelector, setNearSelector] = useState(null);
+  const [nearModal, setNearModal] = useState(null);
   const [walletAction, setWalletAction] = useState('');
   const [walletMenuOpen, setWalletMenuOpen] = useState(false);
   const [walletFeedback, setWalletFeedback] = useState('Choose a wallet to connect.');
@@ -379,27 +387,35 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
     let active = true;
     (async () => {
       try {
-        // Use NEAR Connect's remotely updatable wallet integrations for Nightly
-        // and NEAR Mobile. This avoids bundling fragile per-wallet adapters.
-        const connector = new NearConnector({
-          network: 'mainnet',
-          autoConnect: true,
-          footerBranding: null
-        });
-        connector.on('wallet:signIn', ({ accounts }) => {
-          if (active) setNearWallet(accounts?.[0]?.accountId || '');
-        });
-        connector.on('wallet:signOut', () => {
-          if (active) setNearWallet('');
-        });
-        if (!active) return;
-        setNearSelector(connector);
-        try {
-          const connected = await connector.getConnectedWallet();
-          if (active) setNearWallet(connected.accounts?.[0]?.accountId || '');
-        } catch {
-          // No saved NEAR wallet connection yet; user can choose one on demand.
+        // Give Nightly's in-app browser time to inject its NEAR provider.
+        // If absent, skip only Nightly; never let it prevent other NEAR wallets
+        // (especially NEAR Mobile) from initializing.
+        const nightlyWaitStarted = Date.now();
+        while (!window.nightly?.near && Date.now() - nightlyWaitStarted < 10000) {
+          await new Promise(resolve => setTimeout(resolve, 100));
         }
+        const nearWalletModules = [
+          // Nightly's adapter waits for its injected provider during initialization.
+          // Register it only when the app is actually opened in Nightly; otherwise
+          // it can reject the entire selector setup and hide every other NEAR wallet.
+          ...(window.nightly?.near ? [setupNightly()] : []),
+          setupMeteorWallet(),
+          setupMeteorWalletApp({ contractId: 'wrap.near' }),
+          setupHotWallet(),
+          setupSender(),
+          setupMyNearWallet(),
+          setupNearMobileWallet({ dAppMetadata: { name: 'XoDuspay', logoUrl: 'https://xoduspay-exo-c836.vercel.app/favicon.ico', url: 'https://xoduspay-exo-c836.vercel.app' } })
+        ];
+        const selector = await setupWalletSelector({
+          network: { networkId: 'mainnet', nodeUrl: NEAR_RPC_ENDPOINTS[0] },
+          createAccessKeyFor: {
+            contractId: 'wrap.near',
+            methodNames: []
+          },
+          optimizeWalletOrder: true,
+          modules: nearWalletModules
+        });
+        const modal = setupModal(selector, { contractId: 'wrap.near' });
         if (!active) return;
         setNearSelector(selector);
         setNearModal(modal);
@@ -959,7 +975,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
     setWalletAction('disconnect');
     try {
       if (nearSelector && nearWallet) {
-        try { await nearSelector.disconnect(); } catch (error) {
+        try { const api = await nearSelector.wallet(); await api.signOut(); } catch (error) {
           console.warn('NEAR wallet sign-out:', error);
         }
       }
@@ -1002,10 +1018,10 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
         throw new Error('Nightly NEAR provider was not detected. Open XoDuspay inside Nightly and refresh the page.');
       }
       if (!nearSelector) {
-        throw new Error('NEAR wallet connector is still initializing. Refresh XoDuspay inside Nightly and try again.');
+        throw new Error('NEAR wallet selector is still initializing. Refresh XoDuspay inside Nightly and try again.');
       }
-      const nightlyWallet = await nearSelector.connect({ walletId: 'nightly-wallet' });
-      const accounts = await nightlyWallet.getAccounts({ network: 'mainnet' });
+      const nightlyWallet = await nearSelector.wallet('nightly');
+      const accounts = await nightlyWallet.signIn({ contractId: 'wrap.near', methodNames: [] });
       const accountId = accounts?.[0]?.accountId || '';
       if (!accountId) throw new Error('Nightly did not return a NEAR account. Unlock Nightly and approve the connection request.');
       setNearWallet(accountId);
@@ -1028,18 +1044,14 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
     setWalletAction('near');
     setWalletFeedback('Opening the NEAR wallet selector…');
     try {
-      if (!nearSelector) {
-        setWalletFeedback('NEAR wallet connector is still initializing. Wait a moment and try again.');
+      if (!nearSelector || !nearModal) {
+        setWalletFeedback('NEAR wallet is still initializing. Wait a moment and try again.');
         setNotice('NEAR wallet options are still initializing. Wait a moment and tap Connect NEAR again.');
         return;
       }
-      const connectedWallet = await nearSelector.connect();
-      const accounts = await connectedWallet.getAccounts({ network: 'mainnet' });
-      const accountId = accounts?.[0]?.accountId || '';
-      if (!accountId) throw new Error('The selected NEAR wallet did not return an account. Approve the request in the wallet and try again.');
-      setNearWallet(accountId);
-      setWalletFeedback('NEAR wallet connected: ' + accountId);
-      setNotice('Your NEAR wallet is connected to XoDuspay on NEAR mainnet.');
+      nearModal.show();
+      setWalletFeedback('NEAR wallet selector opened. Choose NEAR Mobile, Nightly or another supported NEAR wallet.');
+      setNotice('Choose NEAR Mobile, Nightly, MyNearWallet, Meteor, HOT Wallet, Sender or another supported wallet.');
     } catch (error) {
       const detail = error?.message || error?.code || String(error) || 'Unknown error';
       setWalletFeedback('NEAR connection error: ' + detail);
