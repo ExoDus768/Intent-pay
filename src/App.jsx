@@ -398,10 +398,8 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
       }
     });
     connector.on('wallet:signOut', () => {
-      if (nearWalletProviderId === 'near-connect') {
-        setNearWallet('');
-        setNearWalletProviderId('');
-      }
+      setNearWallet('');
+      setNearWalletProviderId('');
     });
     setNearConnector(connector);
     (async () => {
