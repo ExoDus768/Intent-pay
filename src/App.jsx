@@ -388,6 +388,12 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
       try {
         const selector = await setupWalletSelector({
           network: { networkId: 'mainnet', nodeUrl: NEAR_RPC_ENDPOINTS[0] },
+          // NEAR Mobile requires a receiver/contract ID during sign-in.
+          // Keep this aligned with the contract configured in setupModal below.
+          createAccessKeyFor: {
+            contractId: 'wrap.near',
+            methodNames: []
+          },
           optimizeWalletOrder: true,
           modules: [
             setupNearMobileWallet(),
