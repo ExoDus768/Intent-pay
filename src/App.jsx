@@ -1009,9 +1009,23 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
     try {
       if (!nearSelector) throw new Error('NEAR wallet setup is still initializing. Wait a few seconds and try again.');
       const mobileWallet = await nearSelector.wallet('near-mobile-wallet');
-      const accounts = await mobileWallet.signIn({ contractId: 'wrap.near', methodNames: [] });
-      const accountId = accounts?.[0]?.accountId || (await mobileWallet.getAccounts())?.[0]?.accountId;
-      if (!accountId) throw new Error('NEAR Mobile did not return an account. Approve the connection in NEAR Mobile and try again.');
+      // Some mobile handoffs approve in the wallet but do not resolve signIn() back in
+      // the browser. Watch the selector account state as well, with a hard timeout.
+      const signInAttempt = mobileWallet.signIn({ contractId: 'wrap.near', methodNames: [] })
+        .then(() => null)
+        .catch(error => error);
+      let accountId = '';
+      const deadline = Date.now() + 25000;
+      while (Date.now() < deadline && !accountId) {
+        const accounts = await mobileWallet.getAccounts().catch(() => []);
+        accountId = accounts?.[0]?.accountId || '';
+        if (!accountId) await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+      if (!accountId) {
+        const signInError = await signInAttempt;
+        if (signInError) throw signInError;
+        throw new Error('NEAR Mobile approval returned, but no account reached XoDuspay within 25 seconds. Reopen XoDuspay in your browser and retry.');
+      }
       setNearWalletProviderId('near-mobile-wallet');
       setNearWallet(accountId);
       setWalletFeedback('NEAR Mobile connected: ' + accountId);
