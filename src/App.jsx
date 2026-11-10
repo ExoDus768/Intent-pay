@@ -1459,11 +1459,48 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
         const result = isNightlyWallet
           ? await walletClient.signAndSendTransaction({ signerId: nearWallet, receiverId: transactions[0].receiverId, actions: transactions[0].actions })
           : await walletClient.signAndSendTransactions({ transactions, callbackUrl: window.location.href });
-        const hash = result?.transaction?.hash || result?.transaction_outcome?.id ||
-          result?.[0]?.transaction?.hash || result?.[0]?.transaction_outcome?.id;
+        // Wallet Selector adapters can return a FinalExecutionOutcome directly,
+        // an array of outcomes, or a wrapped result depending on wallet/provider version.
+        // Extract only a transaction hash; never treat an approval response as proof of broadcast.
+        const findNearTransactionHash = (value, depth = 0) => {
+          if (!value || depth > 5) return '';
+          if (typeof value === 'string') {
+            return /^[1-9A-HJ-NP-Za-km-z]{40,50}$/.test(value) ? value : '';
+          }
+          if (Array.isArray(value)) {
+            for (const item of value) {
+              const found = findNearTransactionHash(item, depth + 1);
+              if (found) return found;
+            }
+            return '';
+          }
+          if (typeof value !== 'object') return '';
+          const direct = [
+            value.transaction?.hash,
+            value.transaction_outcome?.id,
+            value.transactionHash,
+            value.transaction_hash,
+            value.hash
+          ];
+          for (const candidate of direct) {
+            const found = findNearTransactionHash(candidate, depth + 1);
+            if (found) return found;
+          }
+          for (const key of ['result', 'results', 'outcome', 'transaction', 'transaction_outcome']) {
+            const found = findNearTransactionHash(value[key], depth + 1);
+            if (found) return found;
+          }
+          return '';
+        };
+        const hash = findNearTransactionHash(result);
+        console.info('[XoDuspay] NEAR wallet broadcast response', {
+          wallet: walletClient.id,
+          responseKeys: result && typeof result === 'object' ? Object.keys(result) : [],
+          transactionHashFound: Boolean(hash)
+        });
         if (!hash) {
           sessionStorage.removeItem('xoduspay_pending_near');
-          setNotice('Nightly did not return a broadcast transaction hash. No payment has been recorded. Check Nightly activity before trying again.');
+          setNotice('Wallet approval returned, but no valid NEAR transaction hash was received from the wallet. XoDuspay has not marked this payment as sent. Check Nightly activity before retrying; do not approve a second payment if one is already listed.');
           return;
         }
         sessionStorage.removeItem('xoduspay_pending_near');
