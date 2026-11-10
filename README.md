@@ -10,6 +10,7 @@ XoDuspay gives merchants one checkout flow they can share as a hosted link, QR c
 - **Merchant workspace:** https://xoduspay-exo-c836.vercel.app/merchant
 - **Project on X:** https://x.com/XoDuspay
 - **Hackathon overview:** [HACKATHON.md](./HACKATHON.md)
+- **Submission pack:** [docs/HACKATHON-SUBMISSION.md](./docs/HACKATHON-SUBMISSION.md)
 
 ## How it works
 
@@ -19,6 +20,19 @@ XoDuspay gives merchants one checkout flow they can share as a hosted link, QR c
 4. XoDuspay requests a committed quote from NEAR Intents 1Click.
 5. The customer reviews the quote and approves the deposit in their own wallet.
 6. XoDuspay tracks the 1Click status. Only SUCCESS confirms completed delivery.
+
+## Judge quick start
+
+The deployed prototype is mainnet-only. Do not use funds you cannot afford to lose.
+
+1. Open the [Merchant Workspace](https://xoduspay-exo-c836.vercel.app/merchant) and configure a payout asset, receiving address and amount mode.
+2. Generate the hosted checkout link and open it as a customer.
+3. Connect a supported wallet and choose an available source asset.
+4. Request a quote and inspect the returned 1Click quote and deposit instructions.
+5. Review the wallet prompt carefully before approving any real transaction.
+6. Follow the 1Click status. Only `SUCCESS` confirms completed delivery.
+
+A route or amount may be unavailable under the live 1Click quote rules. If no quote/deposit address is returned, stop; do not count that attempt as a completed payment. For a timed walkthrough and expected results, see [HACKATHON.md](./HACKATHON.md).
 
 ## Current implementation
 
