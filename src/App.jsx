@@ -1004,7 +1004,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
       if (!nearSelector) {
         throw new Error('NEAR wallet connector is still initializing. Refresh XoDuspay inside Nightly and try again.');
       }
-      const nightlyWallet = await nearSelector.connect({ walletId: 'nightly' });
+      const nightlyWallet = await nearSelector.connect({ walletId: 'nightly-wallet' });
       const accounts = await nightlyWallet.getAccounts({ network: 'mainnet' });
       const accountId = accounts?.[0]?.accountId || '';
       if (!accountId) throw new Error('Nightly did not return a NEAR account. Unlock Nightly and approve the connection request.');
