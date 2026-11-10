@@ -1033,11 +1033,8 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
   }
 
   async function connectNearWallet() {
-    // In Nightly's in-app browser, use the Wallet Selector Nightly adapter.
-    if (window.nightly?.near) {
-      await connectNightlyWallet();
-      return;
-    }
+    // Always show the full NEAR wallet list, including inside Nightly's browser.
+    // Users should explicitly choose Nightly or another supported NEAR wallet.
     setWalletAction('near');
     setWalletFeedback('Opening the NEAR wallet selector…');
     try {
