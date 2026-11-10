@@ -1054,6 +1054,13 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
   }
 
   async function connectNearWallet() {
+    // In Nightly's in-app browser, detect and connect Nightly automatically.
+    // In a regular browser, show the full NEAR selector with Nightly listed
+    // alongside the other supported NEAR wallets.
+    if (window.nightly?.near) {
+      await connectNightlyWallet();
+      return;
+    }
     setWalletAction('near');
     setWalletFeedback('Opening the NEAR wallet selector…');
     try {
@@ -1063,11 +1070,12 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
         return;
       }
       nearModal.show();
-      setWalletFeedback('NEAR wallet selector opened. Choose a wallet and approve the connection.');
-      setNotice('Choose a NEAR wallet in the wallet window to connect your mainnet account.');
+      setWalletFeedback('NEAR wallet selector opened. Choose Nightly or another NEAR wallet.');
+      setNotice('Choose Nightly, MyNearWallet, NEAR Mobile, Meteor or another supported wallet.');
     } catch (error) {
-      setWalletFeedback('NEAR connection error: ' + (error?.message || 'Unknown error'));
-      setNotice('Could not open the NEAR wallet window: ' + (error?.message || 'Unknown error') + '. Try refreshing the page.');
+      const detail = error?.message || error?.code || String(error) || 'Unknown error';
+      setWalletFeedback('NEAR connection error: ' + detail);
+      setNotice('Could not open the NEAR wallet window: ' + detail + '. Try refreshing the page.');
     } finally { setWalletAction(''); }
   }
 
