@@ -169,7 +169,6 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
   const [nearModal, setNearModal] = useState(null);
   const [walletAction, setWalletAction] = useState('');
   const [walletMenuOpen, setWalletMenuOpen] = useState(false);
-  const [nearWalletMenuOpen, setNearWalletMenuOpen] = useState(false);
   const [walletFeedback, setWalletFeedback] = useState('Choose a wallet to connect.');
   const [siteMenuOpen, setSiteMenuOpen] = useState(false);
   const [followMenuOpen, setFollowMenuOpen] = useState(false);
@@ -1005,31 +1004,50 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
     setWalletAction('near');
     setWalletFeedback('Detecting Nightly wallet…');
     try {
-      const injectedNightly = Boolean(window.nightly?.near);
-      if (injectedNightly) {
-        if (!nearSelector) {
-          setWalletFeedback('Nightly is detected, but the NEAR wallet adapter is still initializing. Wait a moment and retry.');
-          return;
-        }
-        const nightlyWallet = await nearSelector.wallet('nightly');
-        const accounts = await nightlyWallet.signIn({ contractId: 'wrap.near' });
-        const accountId = accounts?.[0]?.accountId || nearSelector.store.getState().accounts[0]?.accountId || '';
-        if (!accountId) throw new Error('Nightly did not return a NEAR account. Approve the connection in Nightly and retry.');
-        setNearWallet(accountId);
-        setWalletFeedback('Nightly connected: ' + accountId);
-        setNotice('Nightly is connected to XoDuspay on NEAR mainnet.');
+      const nightlyProvider = window.nightly?.near;
+      if (!nightlyProvider) {
+        const target = window.location.href;
+        const nightlyUrl = 'https://nightly.app/v1?network=near&cluster=mainnet&url=' + encodeURIComponent(target);
+        setWalletFeedback('Opening this checkout inside the Nightly app…');
+        window.location.assign(nightlyUrl);
         return;
       }
 
-      // Outside Nightly: its universal link opens this exact page in Nightly's
-      // in-app browser, where the injected provider can be detected on retry.
-      const target = window.location.href;
-      const nightlyUrl = 'https://nightly.app/v1?network=near&cluster=mainnet&url=' + encodeURIComponent(target);
-      setWalletFeedback('Opening this checkout inside the Nightly app…');
-      window.location.assign(nightlyUrl);
+      // Prefer the Wallet Selector adapter; if it fails, use Nightly's documented
+      // injected NEAR connect method directly and preserve the actual error.
+      let accountId = '';
+      let adapterError = null;
+      if (nearSelector) {
+        try {
+          const nightlyWallet = await nearSelector.wallet('nightly');
+          const accounts = await nightlyWallet.signIn({ contractId: 'wrap.near' });
+          accountId = accounts?.[0]?.accountId || '';
+        } catch (error) {
+          adapterError = error;
+        }
+      }
+
+      if (!accountId) {
+        if (nightlyProvider.isConnected && nightlyProvider.account?.accountId) {
+          accountId = nightlyProvider.account.accountId;
+        } else {
+          const connectedAccount = await nightlyProvider.connect();
+          accountId = connectedAccount?.accountId || nightlyProvider.account?.accountId || '';
+        }
+      }
+
+      if (!accountId) {
+        const detail = adapterError ? (adapterError?.message || String(adapterError)) : 'Nightly did not return an account.';
+        throw new Error(detail);
+      }
+      setNearWallet(accountId);
+      setWalletFeedback('Nightly connected: ' + accountId);
+      setNotice('Nightly is connected to XoDuspay on NEAR mainnet.');
     } catch (error) {
-      setWalletFeedback('Nightly connection failed: ' + (error?.message || 'Unknown error'));
-      setNotice('Nightly connection failed. No payment was sent. ' + (error?.message || 'Open this page in Nightly and retry.'));
+      const detail = error?.message || error?.code || String(error) || 'Unknown error';
+      console.error('XoDuspay Nightly NEAR connection failed:', error);
+      setWalletFeedback('Nightly connection failed: ' + detail);
+      setNotice('Nightly connection failed. No payment was sent. ' + detail);
     } finally {
       setWalletAction('');
     }
@@ -1595,7 +1613,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
   </main>;
 
   return <main className={checkoutOnly ? "shell customer-checkout-shell" : "shell"}>
-    <nav className={checkoutOnly ? "nav customer-nav" : "nav"}><div className="site-menu-wrap" ref={siteMenuWrapRef}><button type="button" className="hamburger-btn" aria-label="Open navigation menu" aria-expanded={siteMenuOpen} onClick={() => setSiteMenuOpen(open => !open)}><span></span><span></span><span></span></button>{siteMenuOpen && <div className="site-menu"><button type="button" className="site-menu-primary" onClick={() => { setSiteMenuOpen(false); setMerchantWorkspaceOpen(true); }}><span><b>01</b> Merchant workspace</span><span>↗</span></button><a href="#how-it-works" onClick={() => setSiteMenuOpen(false)}>How it works</a><a href="#checkout" onClick={() => setSiteMenuOpen(false)}>Supported networks</a><a href="https://github.com/ExoDus768/XoDuspay-#readme" target="_blank" rel="noreferrer" onClick={() => setSiteMenuOpen(false)}>Documentation <span>↗</span></a><a href="https://github.com/ExoDus768/XoDuspay-" target="_blank" rel="noreferrer" onClick={() => setSiteMenuOpen(false)}>GitHub repository <span>↗</span></a><div className="follow-menu-wrap" ref={followMenuWrapRef}><button type="button" className="follow-menu-trigger" aria-expanded={followMenuOpen} aria-haspopup="true" onClick={() => setFollowMenuOpen(open => !open)}>Follow Us <span>{followMenuOpen ? '⌃' : '›'}</span></button>{followMenuOpen && <div className="follow-submenu"><div className="follow-submenu-title">Follow XoDuspay</div><a className="follow-link-placeholder" href="https://x.com/XoDuspay" target="_blank" rel="noreferrer"><strong>Follow XoDuspay on X</strong><small>@XoDuspay ↗</small></a></div>}</div></div>}</div><a className="brand" href="#"><span className="brand-mark">X</span> XoDuspay</a><div className="nav-right"><span className="status"><i />{health}</span><div className="wallet-menu-wrap" ref={walletMenuWrapRef}><button type="button" className="wallet-btn" onClick={() => setWalletMenuOpen(open => !open)} disabled={!!walletAction}>{walletAction === 'evm' ? 'Connecting EVM…' : walletAction === 'near' ? 'Opening NEAR…' : walletAction === 'solana' ? 'Connecting Solana…' : walletAction === 'walletconnect' ? 'Connecting…' : wallet || nearWallet || solWallet ? short(wallet || nearWallet || solWallet) : 'Connect Wallet'} <span aria-hidden="true">⌄</span></button>{walletMenuOpen && <div className="wallet-menu">{(wallet || nearWallet || solWallet) && <button type="button" className="wallet-disconnect-option" onClick={disconnectWallets} disabled={!!walletAction}><strong>{walletAction === 'disconnect' ? 'Disconnecting…' : 'Disconnect wallet'}</strong><small>Disconnect the connected wallet from XoDuspay</small></button>}<button type="button" onClick={() => { setWalletFeedback('Connecting OKX Wallet…'); connectWallet(); }} disabled={!!walletAction}><strong>OKX Wallet</strong><small>Connect OKX for EVM networks; choose Solana below for Solana assets</small>{(wallet || solWallet) && <small>Connected: {short(wallet || solWallet)}</small>}</button><button type="button" onClick={() => { setWalletFeedback('Starting EVM connection…'); connectWallet(); }} disabled={walletAction === 'evm'}><strong>EVM Wallet</strong><small>MetaMask, Zerion and other EVM wallets</small>{wallet && <small>Connected: {short(wallet)}</small>}</button><button type="button" onClick={() => { setWalletFeedback('Starting Solana connection…'); connectSolanaWallet(); }} disabled={walletAction === 'solana'}><strong>Solana Wallet · Auto-detect</strong><small>Web wallets, Jupiter Mobile, Phantom, Solflare and compatible wallets</small>{solWallet && <small>Connected: {short(solWallet)}</small>}</button><button type="button" onClick={() => setNearWalletMenuOpen(open => !open)} aria-expanded={nearWalletMenuOpen}><strong>NEAR Wallet</strong><small>Nightly and other NEAR wallets</small>{nearWallet && <small>Connected: {short(nearWallet)}</small>}<span aria-hidden="true">{nearWalletMenuOpen ? '⌃' : '⌄'}</span></button>{nearWalletMenuOpen && <div className="wallet-menu-near-options" style={{ paddingLeft: 14, borderLeft: '2px solid var(--border, #d9deea)', marginLeft: 8 }}><button type="button" onClick={() => { setNearWalletMenuOpen(false); setWalletFeedback('Detecting Nightly…'); connectNightlyWallet(); }} disabled={walletAction === 'near'}><strong>Nightly Wallet · Auto-detect</strong><small>Connect in Nightly or open this page in Nightly</small></button><button type="button" onClick={() => { setNearWalletMenuOpen(false); setWalletFeedback('Starting NEAR connection…'); connectNearWallet(); }} disabled={walletAction === 'near'}><strong>Other NEAR Wallets</strong><small>MyNearWallet, NEAR Mobile, Meteor, Sender and more</small></button></div>}<button type="button" onClick={() => { setWalletFeedback('Starting WalletConnect…'); connectWalletConnect(); }} disabled={walletAction === 'walletconnect'}><strong>WalletConnect</strong><small>Scan a QR code or open a compatible mobile wallet</small></button><div className="wallet-menu-feedback" role="status" aria-live="polite">{walletFeedback}</div></div>}</div></div></nav>
+    <nav className={checkoutOnly ? "nav customer-nav" : "nav"}><div className="site-menu-wrap" ref={siteMenuWrapRef}><button type="button" className="hamburger-btn" aria-label="Open navigation menu" aria-expanded={siteMenuOpen} onClick={() => setSiteMenuOpen(open => !open)}><span></span><span></span><span></span></button>{siteMenuOpen && <div className="site-menu"><button type="button" className="site-menu-primary" onClick={() => { setSiteMenuOpen(false); setMerchantWorkspaceOpen(true); }}><span><b>01</b> Merchant workspace</span><span>↗</span></button><a href="#how-it-works" onClick={() => setSiteMenuOpen(false)}>How it works</a><a href="#checkout" onClick={() => setSiteMenuOpen(false)}>Supported networks</a><a href="https://github.com/ExoDus768/XoDuspay-#readme" target="_blank" rel="noreferrer" onClick={() => setSiteMenuOpen(false)}>Documentation <span>↗</span></a><a href="https://github.com/ExoDus768/XoDuspay-" target="_blank" rel="noreferrer" onClick={() => setSiteMenuOpen(false)}>GitHub repository <span>↗</span></a><div className="follow-menu-wrap" ref={followMenuWrapRef}><button type="button" className="follow-menu-trigger" aria-expanded={followMenuOpen} aria-haspopup="true" onClick={() => setFollowMenuOpen(open => !open)}>Follow Us <span>{followMenuOpen ? '⌃' : '›'}</span></button>{followMenuOpen && <div className="follow-submenu"><div className="follow-submenu-title">Follow XoDuspay</div><a className="follow-link-placeholder" href="https://x.com/XoDuspay" target="_blank" rel="noreferrer"><strong>Follow XoDuspay on X</strong><small>@XoDuspay ↗</small></a></div>}</div></div>}</div><a className="brand" href="#"><span className="brand-mark">X</span> XoDuspay</a><div className="nav-right"><span className="status"><i />{health}</span><div className="wallet-menu-wrap" ref={walletMenuWrapRef}><button type="button" className="wallet-btn" onClick={() => setWalletMenuOpen(open => !open)} disabled={!!walletAction}>{walletAction === 'evm' ? 'Connecting EVM…' : walletAction === 'near' ? 'Opening NEAR…' : walletAction === 'solana' ? 'Connecting Solana…' : walletAction === 'walletconnect' ? 'Connecting…' : wallet || nearWallet || solWallet ? short(wallet || nearWallet || solWallet) : 'Connect Wallet'} <span aria-hidden="true">⌄</span></button>{walletMenuOpen && <div className="wallet-menu">{(wallet || nearWallet || solWallet) && <button type="button" className="wallet-disconnect-option" onClick={disconnectWallets} disabled={!!walletAction}><strong>{walletAction === 'disconnect' ? 'Disconnecting…' : 'Disconnect wallet'}</strong><small>Disconnect the connected wallet from XoDuspay</small></button>}<button type="button" onClick={() => { setWalletFeedback('Connecting OKX Wallet…'); connectWallet(); }} disabled={!!walletAction}><strong>OKX Wallet</strong><small>Connect OKX for EVM networks; choose Solana below for Solana assets</small>{(wallet || solWallet) && <small>Connected: {short(wallet || solWallet)}</small>}</button><button type="button" onClick={() => { setWalletFeedback('Starting EVM connection…'); connectWallet(); }} disabled={walletAction === 'evm'}><strong>EVM Wallet</strong><small>MetaMask, Zerion and other EVM wallets</small>{wallet && <small>Connected: {short(wallet)}</small>}</button><button type="button" onClick={() => { setWalletFeedback('Starting Solana connection…'); connectSolanaWallet(); }} disabled={walletAction === 'solana'}><strong>Solana Wallet · Auto-detect</strong><small>Web wallets, Jupiter Mobile, Phantom, Solflare and compatible wallets</small>{solWallet && <small>Connected: {short(solWallet)}</small>}</button><button type="button" onClick={() => { setWalletFeedback('Opening NEAR wallets…'); if (window.nightly?.near) { connectNearWallet(); } else { connectNearWallet(); } }} disabled={walletAction === 'near'}><strong>NEAR Wallet</strong><small>Nightly, MyNearWallet, NEAR Mobile, Meteor and more</small>{nearWallet && <small>Connected: {short(nearWallet)}</small>}</button><button type="button" onClick={() => { setWalletFeedback('Starting WalletConnect…'); connectWalletConnect(); }} disabled={walletAction === 'walletconnect'}><strong>WalletConnect</strong><small>Scan a QR code or open a compatible mobile wallet</small></button><div className="wallet-menu-feedback" role="status" aria-live="polite">{walletFeedback}</div></div>}</div></div></nav>
     {!checkoutOnly && <MerchantTools tokens={tokens} defaultRecipient={wallet || nearWallet} open={merchantWorkspaceOpen} onClose={() => setMerchantWorkspaceOpen(false)} />}
     {!checkoutOnly && <section className="hero" id="how-it-works"><div className="eyebrow">UNIVERSAL CHECKOUT · POWERED BY NEAR INTENTS</div><h1>One checkout.<br/><span>Crypto payments, simplified.</span></h1><p>Merchants configure one reusable checkout. Customers pay with a supported wallet and asset while the merchant receives their chosen payout token.</p></section>}
     <section className="checkout" id="checkout">{bnbWarningOpen && originChain === 'bsc' && <div role="dialog" aria-modal="true" aria-labelledby="bnb-warning-title" style={{ position: 'fixed', inset: 0, zIndex: 10000, background: 'rgba(10,16,30,.72)', display: 'grid', placeItems: 'center', padding: 20 }}><div style={{ width: 'min(100%, 420px)', background: '#fff', color: '#172033', borderRadius: 20, padding: 24, boxShadow: '0 20px 60px rgba(0,0,0,.28)' }}><div style={{ fontSize: 30, marginBottom: 10 }}>⚠️</div><h2 id="bnb-warning-title" style={{ margin: '0 0 10px' }}>BNB Chain payments unavailable</h2><p style={{ lineHeight: 1.55, color: '#596579' }}>We haven’t been able to verify a working payment route for BNB Smart Chain. To prevent a failed transaction, XoDuspay has paused checkout on this network.</p><p style={{ lineHeight: 1.55, color: '#596579' }}>No funds will be sent. Please choose another supported payment network.</p><button type="button" className="primary" style={{ width: '100%' }} onClick={() => { setOriginChain(''); setOriginAsset(''); setOriginSearch(''); setBnbWarningOpen(false); setNotice('Choose another supported payment network to continue.'); }}>Choose another network</button></div></div>}{isWidgetCheckout && <div className="checkout-banner"><span className="eyebrow">{checkoutOnly ? 'MERCHANT PAYMENT' : 'PAYMENT REQUEST'}</span><strong>{isFixedWidgetCheckout ? "$" + Number(merchantAmountParam).toFixed(2) + " USD worth of " + (displayTokenSymbol(destination || {})) : "Variable amount"}</strong><p>{checkoutParams.get("merchantName") || "Merchant payment"} · {fixedOutputCheckout ? "Fixed USD price. The equivalent " + displayTokenSymbol(destination || {}) + " amount is calculated using its live price." : "Customer chooses the amount."}</p></div>}
