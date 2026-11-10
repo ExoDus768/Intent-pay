@@ -3,6 +3,7 @@ import { BrowserProvider, Contract, Interface, formatUnits, isAddress, parseUnit
 import { actionCreators, setupWalletSelector } from '@near-wallet-selector/core';
 import { setupModal } from '@near-wallet-selector/modal-ui';
 import { setupMyNearWallet } from '@near-wallet-selector/my-near-wallet';
+import { setupNearMobileWallet } from '@near-wallet-selector/near-mobile-wallet';
 import { setupNightly } from '@near-wallet-selector/nightly';
 import { setupMeteorWallet } from '@near-wallet-selector/meteor-wallet';
 import { setupMeteorWalletApp } from '@near-wallet-selector/meteor-wallet-app';
@@ -399,7 +400,8 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
           setupMeteorWalletApp({ contractId: 'wrap.near' }),
           setupHotWallet(),
           setupSender(),
-          setupMyNearWallet()
+          setupMyNearWallet(),
+          setupNearMobileWallet({ dAppMetadata: { name: 'XoDuspay', logoUrl: 'https://xoduspay-exo-c836.vercel.app/favicon.ico', url: 'https://xoduspay-exo-c836.vercel.app' } })
         ];
         const selector = await setupWalletSelector({
           network: { networkId: 'mainnet', nodeUrl: NEAR_RPC_ENDPOINTS[0] },
@@ -1044,8 +1046,8 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
         return;
       }
       nearModal.show();
-      setWalletFeedback('NEAR wallet selector opened. Choose Nightly or another NEAR wallet.');
-      setNotice('Choose Nightly, MyNearWallet, Meteor or another supported wallet.');
+      setWalletFeedback('NEAR wallet selector opened. Choose NEAR Mobile, Nightly or another supported NEAR wallet.');
+      setNotice('Choose NEAR Mobile, Nightly, MyNearWallet, Meteor, HOT Wallet, Sender or another supported wallet.');
     } catch (error) {
       const detail = error?.message || error?.code || String(error) || 'Unknown error';
       setWalletFeedback('NEAR connection error: ' + detail);
