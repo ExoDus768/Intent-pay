@@ -387,15 +387,18 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
     let active = true;
     (async () => {
       try {
-        // Nightly injects its NEAR provider asynchronously in the in-app browser.
-        // Wait for it before registering the Wallet Selector adapter; the adapter
-        // itself only waits 2 seconds and otherwise aborts selector initialization.
+        // Give Nightly's in-app browser time to inject its NEAR provider.
+        // If absent, skip only Nightly; never let it prevent other NEAR wallets
+        // (especially NEAR Mobile) from initializing.
         const nightlyWaitStarted = Date.now();
         while (!window.nightly?.near && Date.now() - nightlyWaitStarted < 10000) {
           await new Promise(resolve => setTimeout(resolve, 100));
         }
         const nearWalletModules = [
-          setupNightly(),
+          // Nightly's adapter waits for its injected provider during initialization.
+          // Register it only when the app is actually opened in Nightly; otherwise
+          // it can reject the entire selector setup and hide every other NEAR wallet.
+          ...(window.nightly?.near ? [setupNightly()] : []),
           setupMeteorWallet(),
           setupMeteorWalletApp({ contractId: 'wrap.near' }),
           setupHotWallet(),
