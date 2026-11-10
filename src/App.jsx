@@ -1448,17 +1448,21 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
             'ft_transfer', { receiver_id: depositAddress, amount: amountIn }, 50000000000000n, 1n
           )] }];
         }
-        const isNightlyWallet = walletClient.id === 'nightly';
-        // Nightly is an injected wallet: it signs and broadcasts in-place and
-        // returns a FinalExecutionOutcome. Do not use the browser-wallet callback
-        // redirect flow for it; that can leave the checkout showing a false
-        // "processing" state without a transaction hash.
-        if (!isNightlyWallet) {
-          sessionStorage.setItem('xoduspay_pending_near', JSON.stringify({ quote: activeQuote, originAsset, destinationAsset, recipient, nearWallet }));
+        // Use the single-transaction method for every Wallet Selector adapter.
+        // The multi-transaction API can invoke wallet-specific callback/redirect
+        // flows and return no immediate outcome, even though this checkout sends
+        // exactly one transaction. Single-send gives us one consistent broadcast
+        // result to validate before notifying 1Click.
+        const connectedAccounts = await walletClient.getAccounts();
+        const activeAccount = connectedAccounts?.find(account => account.accountId === nearWallet);
+        if (!activeAccount) {
+          throw new Error('The selected NEAR wallet is no longer connected to ' + nearWallet + '. Reconnect it and request a fresh quote.');
         }
-        const result = isNightlyWallet
-          ? await walletClient.signAndSendTransaction({ signerId: nearWallet, receiverId: transactions[0].receiverId, actions: transactions[0].actions })
-          : await walletClient.signAndSendTransactions({ transactions, callbackUrl: window.location.href });
+        const result = await walletClient.signAndSendTransaction({
+          signerId: activeAccount.accountId,
+          receiverId: transactions[0].receiverId,
+          actions: transactions[0].actions
+        });
         // Wallet Selector adapters can return a FinalExecutionOutcome directly,
         // an array of outcomes, or a wrapped result depending on wallet/provider version.
         // Extract only a transaction hash; never treat an approval response as proof of broadcast.
@@ -1493,17 +1497,23 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
           return '';
         };
         const hash = findNearTransactionHash(result);
+        const transactionOutcome = result?.transaction_outcome?.outcome || result?.transactionOutcome?.outcome ||
+          result?.transaction?.outcome || result?.outcome;
+        const failedOutcome = transactionOutcome?.status?.Failure || transactionOutcome?.status?.failure ||
+          result?.status?.Failure || result?.status?.failure;
         console.info('[XoDuspay] NEAR wallet broadcast response', {
           wallet: walletClient.id,
           responseKeys: result && typeof result === 'object' ? Object.keys(result) : [],
-          transactionHashFound: Boolean(hash)
+          transactionHashFound: Boolean(hash),
+          executionFailed: Boolean(failedOutcome)
         });
+        if (failedOutcome) {
+          throw new Error('The wallet broadcast the NEAR transaction, but execution failed on-chain. Check the wallet activity before retrying.');
+        }
         if (!hash) {
-          sessionStorage.removeItem('xoduspay_pending_near');
-          setNotice('Wallet approval returned, but no valid NEAR transaction hash was received from the wallet. XoDuspay has not marked this payment as sent. Check Nightly activity before retrying; do not approve a second payment if one is already listed.');
+          setNotice('Wallet approval returned, but no transaction hash was received. XoDuspay has not marked this payment as sent. Check the wallet activity before retrying; do not approve a second payment if one is already listed.');
           return;
         }
-        sessionStorage.removeItem('xoduspay_pending_near');
         setTxHash(hash);
         recordCurrentPayment('PROCESSING', hash, activeQuote);
         setNotice('NEAR transaction submitted. Notifying 1Click and checking settlement status…');
