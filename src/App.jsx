@@ -3,7 +3,6 @@ import { BrowserProvider, Contract, Interface, formatUnits, isAddress, parseUnit
 import { actionCreators, setupWalletSelector } from '@near-wallet-selector/core';
 import { setupModal } from '@near-wallet-selector/modal-ui';
 import { setupMyNearWallet } from '@near-wallet-selector/my-near-wallet';
-import { setupNearMobileWallet } from '@near-wallet-selector/near-mobile-wallet';
 import { setupNightly } from '@near-wallet-selector/nightly';
 import { setupMeteorWallet } from '@near-wallet-selector/meteor-wallet';
 import { setupMeteorWalletApp } from '@near-wallet-selector/meteor-wallet-app';
@@ -389,15 +388,12 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
       try {
         const selector = await setupWalletSelector({
           network: { networkId: 'mainnet', nodeUrl: NEAR_RPC_ENDPOINTS[0] },
-          // NEAR Mobile requires a receiver/contract ID during sign-in.
-          // Keep this aligned with the contract configured in setupModal below.
           createAccessKeyFor: {
             contractId: 'wrap.near',
             methodNames: []
           },
           optimizeWalletOrder: true,
           modules: [
-            setupNearMobileWallet(),
             setupNightly(),
             setupMeteorWallet(),
             setupMeteorWalletApp({ contractId: 'wrap.near' }),
