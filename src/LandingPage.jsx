@@ -1,13 +1,38 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 const X_URL = 'https://x.com/Intent_Payy';
 const MERCHANT_URL = '/merchant';
 
 export default function LandingPage() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const menuWrapRef = useRef(null);
+
+  // Close the landing navigation when a tap/click happens outside its wrapper.
+  // Capture phase keeps the dismissal reliable on mobile browsers.
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+    const handleOutsideInteraction = event => {
+      const menu = menuWrapRef.current;
+      if (menu && !menu.contains(event.target) && !event.composedPath?.().includes(menu)) {
+        setMenuOpen(false);
+      }
+    };
+    const handleKeyDown = event => {
+      if (event.key === 'Escape') setMenuOpen(false);
+    };
+    document.addEventListener('pointerdown', handleOutsideInteraction, true);
+    document.addEventListener('click', handleOutsideInteraction, true);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', handleOutsideInteraction, true);
+      document.removeEventListener('click', handleOutsideInteraction, true);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [menuOpen]);
+
   return <main className="landing-shell">
     <header className="landing-nav">
-      <div className="landing-menu-wrap">
+      <div className="landing-menu-wrap" ref={menuWrapRef}>
         <button className="landing-menu-button" type="button" aria-label="Open main menu" aria-expanded={menuOpen} onClick={() => setMenuOpen(open => !open)}>
           <span></span><span></span><span></span>
         </button>
