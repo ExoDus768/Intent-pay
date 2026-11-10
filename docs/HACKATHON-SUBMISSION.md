@@ -27,7 +27,7 @@ Merchants publish one hosted link, QR code or website button. Customers pay from
 2. **0:20–0:50 — Merchant setup:** Open /merchant. Select payout network/token, receiving address and fixed or variable amount.
 3. **0:50–1:15 — Publish:** Show the hosted checkout link, QR code and embed snippet.
 4. **1:15–1:50 — Customer checkout:** Open the hosted checkout, select an available source asset and connect a supported wallet. Show the live 1Click quote.
-5. **1:50–2:30 — Payment proof:** Show the ETH-to-NEAR mainnet test record. The builder reported that the transfer worked, but the exact explorer hash and matching 1Click SUCCESS evidence are not yet in this submission pack. Add and verify both before calling it completed settlement. Never substitute a mock transaction or invented hash.
+5. **1:50–2:30 — Payment proof:** Show the customer transaction-history screen. It displays two records marked SUCCESS: 0.0001 ETH → 0.002337372 SOL (Ethereum → Solana) and 0.00005 ETH → 0.599803468311947155 ARB (Ethereum → Arbitrum). The screenshot shows shortened transaction identifiers only. Present these as successful records displayed by the app; obtain the full transaction hashes and verify the explorer receipts before claiming independently verified on-chain settlement.
 6. **2:30–2:45 — Network status:** Show the verified network list and explicitly mark BNB Smart Chain (BSC) as pending verification.
 7. **2:45–3:00 — Close:** Return to the landing page and state the value proposition.
 
@@ -51,7 +51,7 @@ If a quote is rejected, no deposit address is created, or the selected route is 
 
 ## Verified scope and limitations
 
-Mainnet checkout and wallet flows have been verified for NEAR, Ethereum, Base, Arbitrum, Optimism, Polygon, Avalanche, Gnosis, Berachain, Scroll and Aurora. BNB Smart Chain (BSC) remains **pending end-to-end verification** and must not be described as verified.
+Mainnet checkout and wallet flows have been verified for NEAR, Ethereum, Base, Arbitrum, Optimism, Polygon, Avalanche, Gnosis, Berachain, Scroll and Aurora. The supplied transaction-history screenshot shows two app records marked SUCCESS for Ethereum-to-Solana and Ethereum-to-Arbitrum. Their transaction identifiers are truncated in the screenshot, so explorer-level verification remains outstanding. BNB Smart Chain (BSC) remains **pending end-to-end verification** and must not be described as verified.
 
 The live 1Click registry can list assets that do not have a corresponding browser deposit flow in this prototype. Only use origin networks and tokens for which the checkout exposes a supported wallet flow. The project is a hackathon prototype, not an audited payment processor. Merchant accounts and saved merchant profiles are not implemented; customer cross-device history synchronization has not been end-to-end verified.
 
@@ -61,7 +61,7 @@ The live 1Click registry can list assets that do not have a corresponding browse
 - [ ] Confirm the live app and /merchant workspace load.
 - [ ] Publish the demo post on X. It must say the project was built at NEAR HACKATHON, tag @NEARProtocol, include #NEARHackathon, and attach the demo video or screenshots.
 - [ ] Copy the public X post URL.
-- [ ] Verify the ETH-to-NEAR explorer transaction hash and matching 1Click SUCCESS record, or remove any claim of completed settlement from the demo.
+- [ ] Obtain the full hashes for the Ethereum-to-Solana and Ethereum-to-Arbitrum history entries and verify their explorer receipts before claiming independently verified on-chain settlement.
 - [ ] Have the NEAR account address ready for potential prize payout.
 - [ ] Complete the official form with the repository URL and demo-post URL before **14 November 2026, 23:59 UTC**.
 - [ ] Review every field before submitting. The official site says to submit once per project.
