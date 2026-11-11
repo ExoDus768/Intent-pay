@@ -99,6 +99,18 @@ async function nearRpc(payload) {
   }
   throw new Error(lastError?.message || 'All configured NEAR mainnet RPC providers failed.');
 }
+// NEAR account.amount includes funds reserved to back the account's storage.
+// Wallets show spendable balance after subtracting locked funds and the
+// protocol storage reserve (10^19 yoctoNEAR per byte).
+function nearSpendableBalance(account) {
+  const amount = BigInt(account?.amount || '0');
+  const locked = BigInt(account?.locked || '0');
+  const storageUsage = BigInt(account?.storage_usage || '0');
+  const storageReserve = storageUsage * 10_000_000_000_000_000_000n;
+  const spendable = amount - locked - storageReserve;
+  return (spendable > 0n ? spendable : 0n).toString();
+}
+
 async function readApiResponse(response, label = 'API request') {
   const raw = await response.text();
   let data;
@@ -626,7 +638,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
               // NEAR Intents represents NEAR with nep141:wrap.near, but a NEAR
               // wallet holds native NEAR. Read the account balance, not ft_balance_of.
               const data = await nearRpc({ jsonrpc: '2.0', id: 'xoduspay-wallet-scan', method: 'query', params: { request_type: 'view_account', finality: 'final', account_id: account } });
-              raw = data.result.amount;
+              raw = nearSpendableBalance(data.result);
             } else {
               const contractId = token.contractAddress || String(token.assetId || '').replace(/^nep141:/, '');
               if (!contractId) continue;
@@ -712,7 +724,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
           if (isNativeNear) {
             // Display the payer's native NEAR balance for the NEAR Intents WNEAR asset.
             const data = await nearRpc({ jsonrpc: '2.0', id: 'xoduspay-balance', method: 'query', params: { request_type: 'view_account', finality: 'final', account_id: account } });
-            rawBalance = data.result.amount;
+            rawBalance = nearSpendableBalance(data.result);
           } else {
             const contractId = origin.contractAddress || String(origin.assetId || '').replace(/^nep141:/, '');
             if (!contractId) throw new Error('The selected NEAR token has no contract address.');
