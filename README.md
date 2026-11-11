@@ -32,7 +32,7 @@ The deployed prototype is mainnet-only. Do not use funds you cannot afford to lo
 5. Review the wallet prompt carefully before approving any real transaction.
 6. Follow the 1Click status. Only `SUCCESS` confirms completed delivery.
 
-A route or amount may be unavailable under the live 1Click quote rules. If no quote/deposit address is returned, stop; do not count that attempt as a completed payment. For a timed walkthrough and expected results, see [HACKATHON.md](./HACKATHON.md).
+A route or amount may be unavailable under the live 1Click quote rules. If no quote/deposit address is returned, stop; do not count that attempt as a completed payment. 
 
 ## Current implementation
 
