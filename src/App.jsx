@@ -220,6 +220,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
     : `${String(Math.floor(quoteSecondsRemaining / 3600)).padStart(2, '0')}:${String(Math.floor((quoteSecondsRemaining % 3600) / 60)).padStart(2, '0')}:${String(quoteSecondsRemaining % 60).padStart(2, '0')}`;
   const evmProvidersRef = useRef([]);
   const activeEvmProviderRef = useRef(null);
+  const evmRestoreSuppressedRef = useRef(false);
   const activeSolProviderRef = useRef(null);
   const solanaConnectionRef = useRef(null);
   const walletConnectProviderRef = useRef(null);
@@ -317,7 +318,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
     let cancelled = false;
     const restore = async () => {
       await new Promise(resolve => setTimeout(resolve, 500));
-      if (cancelled || wallet || nearWallet) return;
+      if (cancelled || wallet || nearWallet || evmRestoreSuppressedRef.current) return;
       const injected = window.ethereum;
       const providers = [
         ...evmProvidersRef.current.map(item => item.provider),
@@ -341,7 +342,6 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
     return () => { cancelled = true; };
   }, [wallet, nearWallet]);
 
-  // Restore an already-authorized EVM account silently; never prompt for a new login.
   useEffect(() => {
     let cancelled = false;
     const restore = async () => {
@@ -990,6 +990,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
   }
 
   async function disconnectWallets() {
+    evmRestoreSuppressedRef.current = true;
     setWalletAction('disconnect');
     try {
       if (nearWallet) {
@@ -1070,6 +1071,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
 
 
   async function connectWallet() {
+    evmRestoreSuppressedRef.current = false;
     setWalletAction('evm');
     setWalletFeedback('Checking the wallet connection…');
     let stage = 'wallet discovery';
@@ -1584,14 +1586,23 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
         const balance = await token.balanceOf(wallet);
         if (balance < atomicAmount) throw new Error('Insufficient ' + origin.symbol + ' balance for this deposit.');
         await token.transfer.estimateGas(depositAddress, atomicAmount);
-        setNotice('Transaction checks passed. Confirm the token transfer in your wallet.');
-        tx = await token.transfer(depositAddress, atomicAmount);
+        setNotice('Transaction checks passed. Your wallet should now open the token-transfer approval screen.');
+        const data = ERC20_TRANSFER_INTERFACE.encodeFunctionData('transfer', [depositAddress, atomicAmount]);
+        const hash = await injectedProvider.request({
+          method: 'eth_sendTransaction',
+          params: [{ from: wallet, to: origin.contractAddress, data, value: '0x0' }]
+        });
+        tx = { hash, wait: confirmations => provider.waitForTransaction(hash, confirmations) };
       } else {
         const balance = await provider.getBalance(wallet);
         if (balance < atomicAmount) throw new Error('Insufficient ' + origin.symbol + ' balance for the deposit and network gas.');
         await provider.estimateGas({ from: wallet, to: depositAddress, value: atomicAmount });
-        setNotice('Transaction checks passed. Confirm the deposit in your wallet.');
-        tx = await signer.sendTransaction({ to: depositAddress, value: atomicAmount });
+        setNotice('Transaction checks passed. Your wallet should now open the deposit approval screen.');
+        const hash = await injectedProvider.request({
+          method: 'eth_sendTransaction',
+          params: [{ from: wallet, to: depositAddress, value: '0x' + atomicAmount.toString(16) }]
+        });
+        tx = { hash, wait: confirmations => provider.waitForTransaction(hash, confirmations) };
       }
       if (!tx?.hash) throw new Error('Your wallet returned without a transaction hash. The deposit was not confirmed as broadcast.');
       setTxHash(tx.hash);
