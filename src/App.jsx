@@ -313,62 +313,8 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
   }, []);
 
 
-  // Restore an already-authorized EVM account silently; never trigger a wallet login prompt.
-  useEffect(() => {
-    let cancelled = false;
-    const restore = async () => {
-      await new Promise(resolve => setTimeout(resolve, 500));
-      if (cancelled || wallet || nearWallet || evmRestoreSuppressedRef.current) return;
-      const injected = window.ethereum;
-      const providers = [
-        ...evmProvidersRef.current.map(item => item.provider),
-        ...(Array.isArray(injected?.providers) ? injected.providers : []),
-        ...(injected ? [injected] : [])
-      ].filter((provider, index, all) => provider?.request && all.indexOf(provider) === index);
-      for (const provider of providers) {
-        try {
-          const accounts = await provider.request({ method: 'eth_accounts' });
-          if (!cancelled && Array.isArray(accounts) && accounts[0]) {
-            activeEvmProviderRef.current = provider;
-            setWallet(accounts[0]);
-            setWalletFeedback('Previously connected wallet restored.');
-            setNotice('Your connected EVM wallet was restored. Choose your payment asset without signing in again.');
-            return;
-          }
-        } catch {}
-      }
-    };
-    restore();
-    return () => { cancelled = true; };
-  }, [wallet, nearWallet]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const restore = async () => {
-      await new Promise(resolve => setTimeout(resolve, 500));
-      if (cancelled || wallet || nearWallet) return;
-      const injected = window.ethereum;
-      const providers = [
-        ...evmProvidersRef.current.map(item => item.provider),
-        ...(Array.isArray(injected?.providers) ? injected.providers : []),
-        ...(injected ? [injected] : [])
-      ].filter((provider, index, all) => provider?.request && all.indexOf(provider) === index);
-      for (const provider of providers) {
-        try {
-          const accounts = await provider.request({ method: 'eth_accounts' });
-          if (!cancelled && Array.isArray(accounts) && accounts[0]) {
-            activeEvmProviderRef.current = provider;
-            setWallet(accounts[0]);
-            setWalletFeedback('Previously connected wallet restored.');
-            setNotice('Your connected EVM wallet was restored. Choose your payment asset without signing in again.');
-            return;
-          }
-        } catch {}
-      }
-    };
-    restore();
-    return () => { cancelled = true; };
-  }, [wallet, nearWallet]);
+  // EVM accounts are never restored automatically. The user must explicitly
+  // tap Connect so a previous disconnect is respected across page visits.
 
   useEffect(() => {
     try {
