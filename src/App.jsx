@@ -81,7 +81,7 @@ const normalizeTokenList = data => {
 };
 const short = (value = '') => value.length > 24 ? value.slice(0, 10) + '…' + value.slice(-8) : value;
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
-const NEAR_RPC_ENDPOINTS = ['https://rpc.mainnet.near.org', 'https://free.rpc.fastnear.com'];
+const NEAR_RPC_ENDPOINTS = ['https://free.rpc.fastnear.com', 'https://near.lava.build', 'https://rpc.mainnet.near.org'];
 async function nearRpc(payload) {
   let lastError;
   for (const endpoint of NEAR_RPC_ENDPOINTS) {
