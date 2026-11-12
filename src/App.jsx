@@ -25,11 +25,11 @@ const CHAIN_IDS = {
   eth: 1, ethereum: 1, base: 8453, arb: 42161, arbitrum: 42161,
   op: 10, optimism: 10, polygon: 137, bsc: 56, avax: 43114,
   avalanche: 43114, gnosis: 100, bera: 80094, berachain: 80094,
-  scroll: 534352, aurora: 1313161554
+  scroll: 534352, aurora: 1313161554, robinhood: 4663
 };
 const ERC20_ABI = ['function transfer(address to, uint256 amount) returns (bool)', 'function balanceOf(address owner) view returns (uint256)'];
 const ERC20_TRANSFER_INTERFACE = new Interface(['function transfer(address to, uint256 amount)']);
-const NATIVE_SYMBOL = {1:'ETH',8453:'ETH',42161:'ETH',10:'ETH',137:'POL',56:'BNB',43114:'AVAX',100:'xDAI',80094:'BERA',534352:'ETH',1313161554:'ETH'};
+const NATIVE_SYMBOL = {1:'ETH',8453:'ETH',42161:'ETH',10:'ETH',137:'POL',56:'BNB',43114:'AVAX',100:'xDAI',80094:'BERA',534352:'ETH',1313161554:'ETH',4663:'ETH'};
 const TERMINAL = new Set(['SUCCESS', 'FAILED', 'REFUNDED', 'INCOMPLETE_DEPOSIT']);
 const tokenChain = t => normalizeBlockchain(t?.blockchain, t?.assetId);
 const isNearToken = t => tokenChain(t) === 'near';
@@ -37,7 +37,7 @@ const isSolanaToken = t => tokenChain(t) === 'solana';
 const tokenId = t => t.assetId || '';
 const displayTokenSymbol = t => t?.symbol || 'TOKEN';
 const tokenName = t => `${displayTokenSymbol(t)} · ${t.blockchain || 'Unknown chain'}`;
-const chainLabel = value => ({eth:'Ethereum',arb:'Arbitrum',op:'Optimism',avax:'Avalanche',bera:'Berachain'}[value] || String(value || '').split(/[-_ ]+/).map(x => x.charAt(0).toUpperCase() + x.slice(1)).join(' '));
+const chainLabel = value => ({eth:'Ethereum',arb:'Arbitrum',op:'Optimism',avax:'Avalanche',bera:'Berachain',robinhood:'Robinhood Chain'}[value] || String(value || '').split(/[-_ ]+/).map(x => x.charAt(0).toUpperCase() + x.slice(1)).join(' '));
 const normalizeBlockchain = (value, assetId = '') => {
   const raw = String(value || '').trim().toLowerCase().replace(/[_ ]+/g, '-');
   const id = String(assetId || '').trim().toLowerCase();
@@ -47,7 +47,8 @@ const normalizeBlockchain = (value, assetId = '') => {
     'avalanche-c-chain':'avalanche','avax':'avalanche','op':'optimism',
     'matic':'polygon','pol':'polygon','ftm':'fantom','bera':'berachain',
     'sol':'solana','xdai':'gnosis',
-    'near-protocol':'near','near-mainnet':'near','near-mainnet-beta':'near'
+    'near-protocol':'near','near-mainnet':'near','near-mainnet-beta':'near',
+    'hood':'robinhood','robinhood-chain':'robinhood'
   };
   // The canonical Intents asset ID is authoritative for wrapped/native NEAR,
   // even if the registry's display blockchain field uses another label.
@@ -608,7 +609,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
     'near', 'solana',
     'eth', 'ethereum', 'base', 'arb', 'arbitrum', 'op', 'optimism',
     'polygon', 'bsc', 'bnb', 'avax', 'avalanche', 'gnosis', 'scroll',
-    'aurora', 'bera', 'berachain', 'fantom', 'ftm', 'linea', 'zksync',
+    'aurora', 'bera', 'berachain', 'robinhood', 'fantom', 'ftm', 'linea', 'zksync',
     'mantle', 'mode', 'blast', 'celo', 'worldchain'
   ]);
   const destinationChains = useMemo(() => [...new Set(destinations.map(tokenChain).filter(chain => supportedPayoutChains.has(chain)))].sort((a, b) => chainLabel(a).localeCompare(chainLabel(b))), [destinations]);
