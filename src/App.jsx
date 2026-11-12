@@ -1526,7 +1526,19 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
       let provider = new BrowserProvider(injectedProvider);
       let network = await provider.getNetwork();
       if (Number(network.chainId) !== expectedChain) {
-        await provider.send('wallet_switchEthereumChain', [{ chainId: '0x' + expectedChain.toString(16) }]);
+        try {
+          await provider.send('wallet_switchEthereumChain', [{ chainId: '0x' + expectedChain.toString(16) }]);
+        } catch (switchError) {
+          // Robinhood Chain can be added to compatible EVM wallets on demand.
+          if (expectedChain !== 4663 || Number(switchError?.code) !== 4902) throw switchError;
+          await provider.send('wallet_addEthereumChain', [{
+            chainId: '0x1237',
+            chainName: 'Robinhood Chain',
+            nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+            rpcUrls: ['https://rpc.mainnet.chain.robinhood.com'],
+            blockExplorerUrls: ['https://robinhoodchain.blockscout.com']
+          }]);
+        }
         provider = new BrowserProvider(injectedProvider);
         network = await provider.getNetwork();
       }
