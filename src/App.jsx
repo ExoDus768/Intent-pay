@@ -1540,11 +1540,17 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
           jsonrpc: '2.0', id: 'xoduspay-verify-near-tx', method: 'tx',
           params: [hash, nearWallet, { wait_until: 'EXECUTED' }]
         });
-        const executionStatus = verifiedOutcome?.status;
+        const executionStatus = verifiedOutcome?.result?.status;
         if (executionStatus?.Failure || executionStatus?.failure) {
           throw new Error('NEAR returned a transaction hash, but the transaction failed during execution. Hash: ' + hash);
         }
-        if (!executionStatus || (!executionStatus.SuccessValue && !executionStatus.SuccessReceiptId && !executionStatus.success_value && !executionStatus.success_receipt_id)) {
+        const executionSucceeded = Boolean(executionStatus && (
+          Object.prototype.hasOwnProperty.call(executionStatus, 'SuccessValue') ||
+          Object.prototype.hasOwnProperty.call(executionStatus, 'SuccessReceiptId') ||
+          Object.prototype.hasOwnProperty.call(executionStatus, 'success_value') ||
+          Object.prototype.hasOwnProperty.call(executionStatus, 'success_receipt_id')
+        ));
+        if (!executionSucceeded) {
           throw new Error('The NEAR wallet returned a transaction hash, but successful execution could not be verified yet. Hash: ' + hash + '. Check wallet activity before retrying.');
         }
         setNotice('NEAR transaction execution verified. Notifying 1Click and checking merchant settlement…');
