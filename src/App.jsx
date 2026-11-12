@@ -1497,6 +1497,56 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
           if (!hash) throw new Error(stepName + ' approval returned without a transaction hash. Check NEAR wallet activity before retrying; the next step was not started.');
           return hash;
         };
+        const getFtStorageBalance = async accountId => {
+          const argsBase64 = btoa(JSON.stringify({ account_id: accountId }));
+          const response = await nearRpc({
+            jsonrpc: '2.0', id: 'xoduspay-storage-balance', method: 'query',
+            params: { request_type: 'call_function', finality: 'final', account_id: 'wrap.near', method_name: 'storage_balance_of', args_base64: argsBase64 }
+          });
+          const bytes = response?.result?.result;
+          if (!Array.isArray(bytes)) throw new Error('Could not verify wNEAR storage registration for the 1Click deposit address.');
+          const decoded = new TextDecoder().decode(new Uint8Array(bytes));
+          return decoded ? JSON.parse(decoded) : null;
+        };
+        const verifyNearTxStatus = async (hash, stepName) => {
+          const response = await nearRpc({
+            jsonrpc: '2.0', id: 'xoduspay-tx-status', method: 'tx_status',
+            params: [hash, nearWallet, { wait_until: 'EXECUTED' }]
+          });
+          const status = response?.result?.status;
+          if (status?.Failure || status?.failure) throw new Error(stepName + ' failed on-chain. Transaction: ' + hash);
+          const succeeded = Boolean(status && (
+            Object.prototype.hasOwnProperty.call(status, 'SuccessValue') ||
+            Object.prototype.hasOwnProperty.call(status, 'SuccessReceiptId') ||
+            Object.prototype.hasOwnProperty.call(status, 'success_value') ||
+            Object.prototype.hasOwnProperty.call(status, 'success_receipt_id')
+          ));
+          if (!succeeded) throw new Error(stepName + ' was broadcast, but NEAR RPC has not confirmed successful execution. Transaction: ' + hash);
+          return response.result;
+        };
+        const ensureDepositStorageRegistered = async () => {
+          const storage = await getFtStorageBalance(depositAddress);
+          if (storage) return;
+          const boundsResponse = await nearRpc({
+            jsonrpc: '2.0', id: 'xoduspay-storage-bounds', method: 'query',
+            params: { request_type: 'call_function', finality: 'final', account_id: 'wrap.near', method_name: 'storage_balance_bounds', args_base64: btoa('{}') }
+          });
+          const bytes = boundsResponse?.result?.result;
+          if (!Array.isArray(bytes)) throw new Error('Could not read the wNEAR storage registration requirement. No transfer was sent.');
+          const bounds = JSON.parse(new TextDecoder().decode(new Uint8Array(bytes)));
+          const minimum = BigInt(bounds?.min || '0');
+          if (minimum <= 0n) throw new Error('The wNEAR contract returned an invalid storage registration minimum. No transfer was sent.');
+          setNotice('The 1Click deposit address is not registered for wNEAR. Approve the one-time storage registration (' + (Number(minimum) / 1e24).toFixed(6) + ' NEAR) before the token transfer.');
+          const registration = await sendNearAction('wrap.near', [
+            actionCreators.functionCall('storage_deposit', { account_id: depositAddress, registration_only: true }, 30000000000000n, minimum)
+          ], 'Register 1Click deposit address for wNEAR');
+          const registrationHash = assertNearExecutionSucceeded(registration, 'wNEAR storage registration');
+          await verifyNearTxStatus(registrationHash, 'wNEAR storage registration');
+          sessionStorage.setItem('xoduspay_pending_near', JSON.stringify({ ...pendingNearPayment, stage: 'WNEAR_STORAGE_REGISTERED', storageRegistrationHash: registrationHash }));
+        };
+        // NEP-141 ft_transfer requires the receiver to be storage-registered.
+        // Check the fresh 1Click deposit account first; register it only if needed.
+        await ensureDepositStorageRegistered();
         let result;
         if (isNativeNear) {
           setNotice('Step 1 of 2: approve wrapping native NEAR into wNEAR. No Intents deposit is sent yet.');
@@ -1536,23 +1586,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
         setTxHash(hash);
         recordCurrentPayment('PROCESSING', hash, activeQuote);
         setNotice('NEAR transaction broadcast with hash ' + hash.slice(0, 10) + '…. Verifying it on-chain before notifying 1Click…');
-        const verifiedOutcome = await nearRpc({
-          jsonrpc: '2.0', id: 'xoduspay-verify-near-tx', method: 'tx',
-          params: [hash, nearWallet, { wait_until: 'EXECUTED' }]
-        });
-        const executionStatus = verifiedOutcome?.result?.status;
-        if (executionStatus?.Failure || executionStatus?.failure) {
-          throw new Error('NEAR returned a transaction hash, but the transaction failed during execution. Hash: ' + hash);
-        }
-        const executionSucceeded = Boolean(executionStatus && (
-          Object.prototype.hasOwnProperty.call(executionStatus, 'SuccessValue') ||
-          Object.prototype.hasOwnProperty.call(executionStatus, 'SuccessReceiptId') ||
-          Object.prototype.hasOwnProperty.call(executionStatus, 'success_value') ||
-          Object.prototype.hasOwnProperty.call(executionStatus, 'success_receipt_id')
-        ));
-        if (!executionSucceeded) {
-          throw new Error('The NEAR wallet returned a transaction hash, but successful execution could not be verified yet. Hash: ' + hash + '. Check wallet activity before retrying.');
-        }
+        await verifyNearTxStatus(hash, 'The NEAR deposit transfer');
         setNotice('NEAR transaction execution verified. Notifying 1Click and checking merchant settlement…');
         const submitted = await fetch('/api/deposit/submit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ txHash: hash, depositAddress, depositMemo: activeQuote.quote.depositMemo || undefined, nearSenderAccount: nearWallet }) });
         const submitData = await submitted.json();
