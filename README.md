@@ -1,96 +1,110 @@
 # XoDuspay
 
-**Universal crypto checkout powered by NEAR Intents and the 1Click API.**
+**Pay in the token you hold. Merchants receive the token they want.**
 
-XoDuspay gives merchants one checkout flow they can share as a hosted link, QR code or website button. Customers choose from supported payment assets and connect their own wallet. The merchant configures the payout network, token and receiving address.
+XoDuspay is a universal, cross-chain checkout built around **NEAR Intents 1Click**. It lets a merchant request payment in a preferred asset and receive that asset at a wallet on another supported blockchain, while the customer pays from a wallet and token they already hold.
 
-## Start here
+A merchant can configure a checkout, share a hosted payment link or QR code, or embed a checkout button on a website. The customer connects a supported wallet, chooses an available payment asset, reviews a live quote, and approves the transaction in their own wallet. XoDuspay tracks the payment through settlement and records it as successful only after the 1Click status reports `SUCCESS`.
 
-- **Public landing page:** https://xoduspay-exo-c836.vercel.app/
-- **Merchant workspace:** https://xoduspay-exo-c836.vercel.app/merchant
-- **Project on X:** https://x.com/XoDuspay
-- **Hackathon overview:** [HACKATHON.md](./HACKATHON.md)
-- **Submission pack:** [docs/HACKATHON-SUBMISSION.md](./docs/HACKATHON-SUBMISSION.md)
+> **Project status: mainnet hackathon prototype.** The team has manually tested the currently enabled payment routes, including BNB Smart Chain and Robinhood Chain. BNB Smart Chain is working but is currently flagged in the product as unstable. Mainnet transactions move real assets. This prototype has not undergone an independent security audit.
+
+## Project links
+
+| Resource | Link |
+|---|---|
+| Live application | https://xoduspay-exo-c836.vercel.app/ |
+| Merchant workspace | https://xoduspay-exo-c836.vercel.app/merchant |
+| Project on X | https://x.com/XoDuspay |
+| NEAR Intents documentation | https://docs.near-intents.org |
+| Hackathon overview | [HACKATHON.md](./HACKATHON.md) |
+| Hackathon submission notes | [docs/HACKATHON-SUBMISSION.md](./docs/HACKATHON-SUBMISSION.md) |
+
+## Mainnet transaction proof
+
+The following explorer links were supplied by the project team as proof of a completed cross-chain checkout:
+
+- **Solana destination transaction:** [View on Solscan](https://solscan.io/tx/332fhFGKxsvedfM8D85nvrnuBE4xmESUWTYCnGSX2xA39mvhhgcM2eP9q17dNvygM3GLSqq6D9UvZp6RtJDxEuNz)
+- **NEAR source transaction:** [View on NearBlocks](https://nearblocks.io/txns/3QmPUVbKFdKDQvTSeXsqNdWwxLB4ctrZJhz6GeJVPMnF)
+
+The demonstrated flow was a customer payment from NEAR using WNEAR, with the merchant receiving SOL on Solana. The team reported a successful 1Click settlement and independently checked the destination wallet.
 
 ## How it works
 
-1. A merchant selects a payout network and token, enters a receiving address, and chooses a fixed or customer-entered amount.
-2. XoDuspay creates a hosted checkout link, a scannable QR code and website button embed code.
-3. The customer opens checkout, selects an available payment asset and connects a supported wallet.
-4. XoDuspay requests a committed quote from NEAR Intents 1Click.
-5. The customer reviews the quote and approves the deposit in their own wallet.
-6. XoDuspay tracks the 1Click status. Only SUCCESS confirms completed delivery.
+1. **Configure checkout.** The merchant selects a payout network and token, supplies the destination wallet address, and chooses either a fixed USD amount or customer-entered amount.
+2. **Share the checkout.** XoDuspay generates a hosted checkout URL and QR code. Merchants can also use the website checkout-button embed.
+3. **Connect a wallet.** The customer connects a supported NEAR, EVM or Solana wallet and chooses an available source network and token.
+4. **Get a live quote.** The backend requests a quote from NEAR Intents 1Click using the selected source asset, merchant payout asset, amount and recipient.
+5. **Review and approve.** The customer reviews the quote details, including the amount, estimated output, minimum, expiry and deposit instructions, then authorizes the payment in their own wallet.
+6. **Verify and track.** XoDuspay verifies the source transaction, submits the deposit information to 1Click and polls the quote status.
+7. **Confirm settlement.** The payment is marked complete only when 1Click returns `SUCCESS`. A wallet approval or transaction broadcast alone is not treated as a completed payment.
 
-## Judge quick start
+## Product capabilities
 
-The deployed prototype is mainnet-only. Do not use funds you cannot afford to lose.
+### Merchant checkout
 
-1. Open the [Merchant Workspace](https://xoduspay-exo-c836.vercel.app/merchant) and configure a payout asset, receiving address and amount mode.
-2. Generate the hosted checkout link and open it as a customer.
-3. Connect a supported wallet and choose an available source asset.
-4. Request a quote and inspect the returned 1Click quote and deposit instructions.
-5. Review the wallet prompt carefully before approving any real transaction.
-6. Follow the 1Click status. Only `SUCCESS` confirms completed delivery.
+- Dedicated merchant workspace at `/merchant`
+- Configure payout network, token and receiving address
+- Fixed-price checkout based on a USD amount
+- Customer-entered amount checkout
+- Hosted checkout links that carry the merchant payout details
+- QR code generation for sharing or displaying at point of sale
+- Website checkout-button embed code and the public `xoduspay.js` loader
+- Merchant-selected payout asset, independent of the customer's source asset
 
-A route or amount may be unavailable under the live 1Click quote rules. If no quote/deposit address is returned, stop; do not count that attempt as a completed payment. 
+### Customer payment
 
-## Current implementation
+- Dedicated hosted customer checkout at `/checkout`
+- Wallet connection for NEAR, EVM and Solana wallet flows
+- Network selection separated from token selection
+- Available assets sourced from the live NEAR Intents token registry
+- Wallet balance detection for supported wallet and token combinations
+- Live quote request and quote-expiry countdown
+- Quote and deposit details shown before wallet approval
+- Source transaction verification and 1Click deposit submission
+- Settlement status tracking, including `SUCCESS`, `FAILED`, `REFUNDED` and `INCOMPLETE_DEPOSIT`
+- Customer transaction history associated with a wallet-authenticated session
 
-- Public landing page describing the Universal Checkout Widget and NEAR Intents technology
-- Separate merchant workspace (/merchant) and customer checkout (/checkout)
-- Live 1Click token registry, cached server-side for five minutes
-- Merchant payout network, token and receiving-address configuration
-- Fixed-price and customer-entered amount checkout modes
-- Hosted checkout URL generation
-- QR code generation and PNG download
-- Website button embed code and the public/xoduspay.js checkout loader
-- Server-side validation that payout and payment asset IDs exist in the live registry
-- NEAR Intents committed payment quotes with unique deposit addresses
-- EVM wallet connection and ERC-20 / native-token deposit transactions
-- NEAR Wallet Selector connection and NEP-141 deposits
-- Native NEAR wrapping to wNEAR before sending to a 1Click deposit address
-- NEAR sender account included in 1Click deposit notifications
-- Network switching for configured EVM networks
-- Transaction confirmation before deposit notification
-- 1Click deposit submission and payment-status polling
-- Terminal status handling: SUCCESS, FAILED, REFUNDED, INCOMPLETE_DEPOSIT
-- Server-side 1Click JWT; no API secret in browser code
-- Vercel serverless-compatible Express export
-- WalletConnect QR / mobile wallet connection for EVM networks
-- Browser payment-completion notifications
-- 1Click estimated settlement-time display
-- Wallet-linked customer transaction history with private cloud storage; cross-device behavior still requires end-to-end testing
+### Backend and reliability
 
-## Testing and verification status
+- NEAR Intents 1Click mainnet quote, deposit and status APIs
+- Live token registry validation; token metadata is cached server-side for five minutes
+- Validation of source and destination asset IDs against the live registry
+- Server-side validation of merchant payout and refund addresses
+- Server-side 1Click JWT; the secret is not exposed in browser code
+- NEAR RPC failover for transaction and account operations
+- Solana RPC proxy/failover for browser wallet operations
+- EVM network switching and transaction confirmation handling
+- API rate limits and request validation
+- Wallet-signed authentication for customer history
+- Private Vercel Blob storage for persistent history and replay-protection data when configured
+- Vercel-compatible Express backend
 
-The checkout and wallet flows have been tested on mainnet for the supported networks listed below, with the exception of BNB Smart Chain (BSC).
+## Networks and route testing
 
-| Network | Testing status |
+XoDuspay uses the live NEAR Intents token registry to determine which assets can be quoted. Availability is pair- and liquidity-dependent: an asset appearing in the registry does not guarantee that every source/destination pair or amount will receive a quote.
+
+The team reports that all currently enabled routes have been exercised successfully on mainnet. BNB Smart Chain has been tested and works, but is currently marked **unstable** in the application. Robinhood Chain (Hood) has also been added and tested successfully.
+
+The application includes EVM network mappings for Ethereum, Base, Arbitrum, Optimism, Polygon, BNB Smart Chain, Avalanche, Gnosis, Berachain, Scroll, Aurora and Robinhood Chain. The exact assets and available routes are determined by the live registry and the wallet flow enabled for that network.
+
+| Network / wallet family | Current project status |
 |---|---|
-| NEAR | Verified |
-| Ethereum | Verified |
-| Base | Verified |
-| Arbitrum | Verified |
-| Optimism | Verified |
-| Polygon | Verified |
-| Avalanche | Verified |
-| Gnosis | Verified |
-| Berachain | Verified |
-| Scroll | Verified |
-| Aurora | Verified |
-| BNB Smart Chain (BSC) | **Not yet verified — testing pending** |
+| NEAR | Mainnet wallet and NEP-141 payment flow implemented and tested |
+| Solana | Wallet flow implemented; cross-chain settlement demonstrated |
+| Ethereum | EVM wallet payment flow implemented and tested |
+| Base | EVM wallet payment flow implemented and tested |
+| Arbitrum | EVM wallet payment flow implemented and tested |
+| Optimism | EVM wallet payment flow implemented and tested |
+| Polygon | EVM wallet payment flow implemented and tested |
+| Avalanche | EVM wallet payment flow implemented and tested |
+| Gnosis | EVM wallet payment flow implemented and tested |
+| Berachain | EVM wallet payment flow implemented and tested |
+| Scroll | EVM wallet payment flow implemented and tested |
+| Aurora | EVM wallet payment flow implemented and tested |
+| BNB Smart Chain | Tested and working; **unstable warning is shown in the app** |
+| Robinhood Chain (Hood) | Newly added route tested successfully |
 
-BSC remains explicitly unverified; do not treat it as tested or rely on it for a live checkout until its wallet connection, asset detection, deposit and 1Click settlement have been confirmed.
-
-Verification refers to the tested checkout flows and should not be interpreted as a security audit or a guarantee that every token listed by the live registry is supported for deposits.
-
-## Supported wallet networks
-
-NEAR mainnet deposits are supported through NEAR Wallet Selector for NEP-141 assets listed by the live registry, including wrapped NEAR. Native NEAR is wrapped to wNEAR in the wallet transaction before transfer.
-
-The EVM wallet-send implementation maps these 1Click registry chain identifiers to EVM chain IDs: Ethereum, Base, Arbitrum, Optimism, Polygon, BNB Smart Chain, Avalanche, Gnosis, Berachain, Scroll and Aurora.
-
-The live token list can include assets on other chains. Those assets may appear as payout choices, but browser deposit support is not enabled for every network. Do not send from an origin network unless the checkout explicitly supports its wallet flow.
+These statuses describe the team's integration testing, not a security audit or a guarantee that every token, wallet, amount or route will always be available. Live liquidity, solver availability, token support, network conditions and route minimums can change.
 
 ## Run locally
 
@@ -102,41 +116,84 @@ cp .env.example .env
 npm run dev
 ```
 
-Set ONECLICK_JWT in .env before requesting a quote. Keep the JWT server-side. Never expose it in browser code or commit a real secret.
+The Vite client runs on port `5173`; the Express API runs on port `3001`. The Vite development server proxies API requests to Express.
 
-The Vite frontend runs on port 5173 and proxies /api requests to Express on port 3001.
+Build the frontend with:
 
-## 1Click setup
-
-Request a 1Click API key through the [NEAR Intents Partners Portal](https://partners.near-intents.org/). Add it to the server environment as ONECLICK_JWT.
-
-XoDuspay uses the official NEAR Intents 1Click mainnet endpoint. NEAR Wallet Selector is configured for NEAR mainnet, and EVM deposits use the corresponding EVM mainnets. There is no testnet or simulated-payment checkout mode. Quotes create real deposit addresses and sending a transaction moves real assets. Before enabling customer payments, test with a tiny amount you can afford to lose and independently verify the token, chain, amount, recipient, quote expiry and deposit address.
+```bash
+npm run build
+```
 
 ## Environment variables
 
-- ONECLICK_JWT: server-only 1Click authentication token
-- XODUSPAY_HISTORY_SECRET: wallet-history signing secret
-- APP_ORIGIN: optional comma-separated allowed browser origins
-- PORT: Express port (defaults to 3001)
-- VITE_WALLETCONNECT_PROJECT_ID: public WalletConnect / Reown project ID used by the browser bundle
+The repository's `.env.example` defines the primary local settings. The backend also reads the optional/production variables listed below.
 
-Add the WalletConnect project ID as a Vercel environment variable with the VITE_ prefix, then redeploy.
+| Variable | Purpose |
+|---|---|
+| `ONECLICK_JWT` | Server-side authentication token for NEAR Intents 1Click |
+| `EXPLORER_JWT` | Explorer API JWT used for 1Click transaction lookup features |
+| `XODUSPAY_HISTORY_SECRET` | Secret used to sign wallet-history sessions; use a random value of at least 32 characters |
+| `BLOB_READ_WRITE_TOKEN` | Vercel Blob token for persistent private history and challenge replay-protection storage |
+| `APP_ORIGIN` | Optional comma-separated list of allowed browser origins |
+| `PORT` | Express server port; defaults to `3001` |
+| `VITE_WALLETCONNECT_PROJECT_ID` | Public WalletConnect / Reown project ID used by browser wallet connections |
 
-## Current limitations
+Set server secrets in your local `.env` file and your hosting provider's encrypted environment settings. The `VITE_` variable is bundled for browser use and must not contain a secret.
 
-XoDuspay is a hackathon prototype, not an audited payment processor.
+**Never commit `.env`, API credentials, wallet private keys or seed phrases.**
 
-- Merchant accounts and saved widget configurations are not implemented; merchants currently configure the widget in the workspace.
-- Customer transaction history uses wallet-linked private cloud storage, but two-device synchronization has not yet been end-to-end verified.
-- BNB Smart Chain (BSC) is listed in the EVM network mapping but remains unverified; its end-to-end checkout test is pending.
-- Other non-EVM wallet deposit flows are not implemented, even if their assets appear in the live registry as payout options.
-- Merchants should verify popup behavior and styling when embedding the checkout on their own production websites.
-- There is no refund-management interface.
-- The server validates asset IDs against the live token registry and validates payout/refund addresses. Production still needs merchant authentication, monitoring and a security review.
-- A failed notification after a confirmed on-chain deposit must be reconciled by checking the quote status. Do not send a second deposit for the same quote.
-- Never treat a transaction broadcast as a completed payment. Only a 1Click SUCCESS status confirms destination delivery.
+## NEAR Intents setup
 
-## Security
+XoDuspay uses the NEAR Intents 1Click mainnet API. Request access through the [NEAR Intents Partners Portal](https://partners.near-intents.org/) and configure `ONECLICK_JWT` in the server environment.
 
-Never commit API secrets, wallet private keys or seed phrases. Use your hosting provider's encrypted environment-variable settings. Do not accept customer payments until the full flow has been tested and independently reviewed.
+The backend requests a dry quote to check the route and authoritative input USD value before creating a committed quote and deposit address. It does not create a deposit address when the quote is rejected or fails validation.
 
+## Payment status and reconciliation
+
+**A broadcast transaction is not a completed payment.** Only a 1Click `SUCCESS` status confirms delivery to the merchant's destination.
+
+| Situation | Recommended action |
+|---|---|
+| Wallet approval appears, but the app has no transaction hash | Check wallet activity and the relevant chain explorer before retrying. |
+| Source transaction is confirmed, but 1Click is still processing | Keep checking the same quote's status; do not create a second payment. |
+| Deposit notification fails after an on-chain transfer | Reconcile using the original deposit address and 1Click status endpoint. Do not send a second deposit for that quote. |
+| Quote expires before payment | Request a fresh quote and review its new deposit instructions. |
+| 1Click reports a failed or refunded payment | Check the configured refund address and the quote's terminal status before trying again. |
+| A quote is rejected or a route is unavailable | No deposit address should be used; try another available route or amount if appropriate. |
+
+A route can be rejected because of liquidity, solver availability, supported asset pairs or provider minimums. Minimums are route-specific and can change; XoDuspay does not guarantee that every amount or pair will be accepted.
+
+## Security and operational notes
+
+- Customers retain control of their funds and approve transfers from their own wallets. XoDuspay does not custody customer private keys.
+- The 1Click authentication token is used server-side and must never be exposed in frontend code.
+- Confirm the network, token, amount, recipient, quote expiry and deposit address in the wallet before signing.
+- Only the 1Click terminal `SUCCESS` status is treated as completed delivery.
+- A failed notification or frontend interruption does not prove that a deposit failed; reconcile the original quote before taking another action.
+- The prototype uses server-side validation, rate limits and wallet-signed history authentication, but these controls do not replace an independent security review.
+
+## Known limitations
+
+- XoDuspay is a hackathon prototype and has not undergone an independent security audit.
+- BNB Smart Chain is working but currently flagged as unstable in the application.
+- Quote availability, route minimums and settlement times depend on live 1Click liquidity and solver conditions.
+- Merchant authentication and a full multi-merchant account-management system are not implemented; merchants configure checkout in the workspace.
+- Customer history uses wallet-linked authentication and private cloud storage; production operations should verify cross-device recovery and retention behavior.
+- There is no dedicated refund-management interface; refunds are handled through the 1Click flow and the configured refund address.
+- Production use requires monitoring, alerting, operational support and a security review.
+- The checkout embed should be tested against each merchant's content security policy, popup behavior and mobile wallet handoff.
+
+## Tech stack
+
+- React and Vite
+- Node.js and Express
+- NEAR Intents 1Click
+- NEAR Wallet Selector and NEAR RPC
+- Ethers.js for EVM wallet and transaction flows
+- Solana Web3.js and SPL Token libraries
+- WalletConnect / Reown
+- Vercel Functions and Vercel Blob
+
+## License
+
+No license has been declared in this repository yet. All rights remain with the project authors unless and until a license is added.
