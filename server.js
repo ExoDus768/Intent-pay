@@ -651,6 +651,25 @@ app.post('/api/quote', quoteLimiter, async (req, res) => {
       deadline: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
       referral: 'xoduspay'
     };
+    // Safe route diagnostics: record exact public asset IDs and quote settings,
+    // but never log wallet addresses, merchant recipients, API keys, or amounts.
+    console.info('[1Click quote] request', {
+      originAsset: input.origin.assetId,
+      originBlockchain: input.origin.blockchain,
+      originSymbol: input.origin.symbol,
+      originDecimals: input.origin.decimals,
+      destinationAsset: input.destination.assetId,
+      destinationBlockchain: input.destination.blockchain,
+      destinationSymbol: input.destination.symbol,
+      destinationDecimals: input.destination.decimals,
+      swapType: input.swapType,
+      amountDigits: input.amount.length,
+      depositType: request.depositType,
+      recipientType: request.recipientType,
+      refundType: request.refundType,
+      slippageTolerance: request.slippageTolerance,
+      dry: true
+    });
     // Check the authoritative USD estimate with a dry quote first. Only create
     // a deposit address after the minimum has passed.
     let dryData;
