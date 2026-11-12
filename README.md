@@ -23,7 +23,6 @@ The customer reviews a live quote and approves the payment in their own wallet. 
 - [Security](#security)
 - [Known limitations](#known-limitations)
 - [Tech stack](#tech-stack)
-- [License](#license)
 
 ## Project links
 
@@ -204,6 +203,3 @@ The backend requests a dry quote to check route availability and input USD value
 - WalletConnect / Reown
 - Vercel Functions and Vercel Blob
 
-## License
-
-This project is licensed under the [MIT License](./LICENSE).
