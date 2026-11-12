@@ -1426,7 +1426,27 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
         const amountIn = String(activeQuote.quote.amountIn);
         const tokenContract = origin.contractAddress || (isNativeNearAsset(origin) || isWrappedNearAsset(origin) ? 'wrap.near' : '');
         if (!tokenContract) throw new Error('This NEAR token has no valid NEP-141 contract address in the live registry.');
-        setNotice('Confirm the NEAR deposit in your wallet. Check the token, amount, and deposit address carefully.');
+
+        // Persist the complete payment context before opening a mobile-wallet
+        // approval screen. Android wallets may background/reload this tab while
+        // returning from their signing deep link.
+        const pendingNearPayment = {
+          version: 1,
+          createdAt: Date.now(),
+          stage: isNativeNearAsset(origin) ? 'AWAITING_WRAP_APPROVAL' : 'AWAITING_TRANSFER_APPROVAL',
+          quote: activeQuote,
+          originAsset,
+          destinationAsset,
+          recipient: recipient.trim(),
+          nearSenderAccount: nearWallet,
+          depositAddress,
+          depositMemo: activeQuote.quote.depositMemo || '',
+          amountIn,
+          tokenContract
+        };
+        sessionStorage.setItem('xoduspay_pending_near', JSON.stringify(pendingNearPayment));
+        setNotice('Opening NEAR Mobile approval. The payment is not submitted until a transaction hash is returned and verified on NEAR.');
+
         const isNativeNear = isNativeNearAsset(origin);
         const connectedAccounts = await walletClient.getAccounts();
         const activeAccount = connectedAccounts?.find(account => account.accountId === nearWallet);
@@ -1436,11 +1456,16 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
         // Native NEAR is wrapped and transferred in two separate wallet
         // approvals. Some mobile wallets reject the combined two-action call.
         // The second step is never attempted unless the wrap transaction succeeds.
-        const sendNearAction = async (receiverId, actions) => walletClient.signAndSendTransaction({
-          signerId: activeAccount.accountId,
-          receiverId,
-          actions
-        });
+        const sendNearAction = async (receiverId, actions, stepLabel) => {
+          setNotice(stepLabel + ': waiting for NEAR Mobile to approve and broadcast the transaction…');
+          const response = await walletClient.signAndSendTransaction({
+            signerId: activeAccount.accountId,
+            receiverId,
+            actions
+          });
+          if (!response) throw new Error(stepLabel + ': wallet returned approval without a transaction result. No broadcast could be verified.');
+          return response;
+        };
         const findNearTransactionHash = (value, depth = 0) => {
           if (!value || depth > 5) return '';
           if (typeof value === 'string') return /^[1-9A-HJ-NP-Za-km-z]{40,50}$/.test(value) ? value : '';
@@ -1477,16 +1502,17 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
           setNotice('Step 1 of 2: approve wrapping native NEAR into wNEAR. No Intents deposit is sent yet.');
           const wrapResult = await sendNearAction('wrap.near', [
             actionCreators.functionCall('near_deposit', {}, 30000000000000n, BigInt(amountIn))
-          ]);
+          ], 'Step 1 of 2 — wrap native NEAR');
           const wrapHash = assertNearExecutionSucceeded(wrapResult, 'The NEAR wrapping transaction');
           setNotice('Native NEAR successfully wrapped (transaction ' + wrapHash.slice(0, 10) + '…). Step 2 of 2: approve sending wNEAR to the unique NEAR Intents deposit address.');
+          sessionStorage.setItem('xoduspay_pending_near', JSON.stringify({ ...pendingNearPayment, stage: 'AWAITING_WNEAR_TRANSFER_APPROVAL', wrapTransactionHash: wrapHash }));
           result = await sendNearAction('wrap.near', [
             actionCreators.functionCall('ft_transfer', { receiver_id: depositAddress, amount: amountIn }, 50000000000000n, 1n)
-          ]);
+          ], 'Step 2 of 2 — send wNEAR to the Intents deposit address');
         } else {
           result = await sendNearAction(tokenContract, [
             actionCreators.functionCall('ft_transfer', { receiver_id: depositAddress, amount: amountIn }, 50000000000000n, 1n)
-          ]);
+          ], 'NEAR token deposit');
         }
         const hash = assertNearExecutionSucceeded(result, isNativeNear ? 'The wNEAR deposit transfer' : 'The NEAR token transfer');
         const transactionOutcome = result?.transaction_outcome?.outcome || result?.transactionOutcome?.outcome ||
@@ -1502,9 +1528,26 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
         if (failedOutcome) {
           throw new Error('The wallet broadcast the NEAR transaction, but execution failed on-chain. Check the wallet activity before retrying.');
         }
+        // A wallet approval is not proof of broadcast. Require the wallet's
+        // transaction outcome/hash before notifying 1Click or creating history.
+        sessionStorage.setItem('xoduspay_pending_near', JSON.stringify({
+          ...pendingNearPayment, stage: 'BROADCAST', transactionHash: hash
+        }));
         setTxHash(hash);
         recordCurrentPayment('PROCESSING', hash, activeQuote);
-        setNotice('NEAR transaction submitted. Notifying 1Click and checking settlement status…');
+        setNotice('NEAR transaction broadcast with hash ' + hash.slice(0, 10) + '…. Verifying it on-chain before notifying 1Click…');
+        const verifiedOutcome = await nearRpc({
+          jsonrpc: '2.0', id: 'xoduspay-verify-near-tx', method: 'tx',
+          params: [hash, nearWallet, { wait_until: 'EXECUTED' }]
+        });
+        const executionStatus = verifiedOutcome?.status;
+        if (executionStatus?.Failure || executionStatus?.failure) {
+          throw new Error('NEAR returned a transaction hash, but the transaction failed during execution. Hash: ' + hash);
+        }
+        if (!executionStatus || (!executionStatus.SuccessValue && !executionStatus.SuccessReceiptId && !executionStatus.success_value && !executionStatus.success_receipt_id)) {
+          throw new Error('The NEAR wallet returned a transaction hash, but successful execution could not be verified yet. Hash: ' + hash + '. Check wallet activity before retrying.');
+        }
+        setNotice('NEAR transaction execution verified. Notifying 1Click and checking merchant settlement…');
         const submitted = await fetch('/api/deposit/submit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ txHash: hash, depositAddress, depositMemo: activeQuote.quote.depositMemo || undefined, nearSenderAccount: nearWallet }) });
         const submitData = await submitted.json();
         if (!submitted.ok) throw new Error(submitData.error || 'Deposit notification failed. The NEAR transaction may already be confirmed; check status before retrying.');
@@ -1524,7 +1567,11 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
           await wait(5000);
         }
         setNotice('The NEAR deposit was submitted, but settlement is still pending. Check status again; do not send a second payment.');
-      } catch (error) { setNotice(error.message || 'The NEAR deposit failed. Check your wallet activity before retrying.'); }
+      } catch (error) {
+        const detail = error?.message || 'Unknown NEAR wallet error';
+        setNotice('NEAR payment did not reach verified submission: ' + detail + ' Check NEAR Mobile activity before retrying. If it shows a transaction hash, keep it for recovery; do not pay again until its status is checked.');
+        console.error('[XoDuspay] NEAR payment handoff failed', { message: detail });
+      }
       finally { setBusy(false); }
       return;
     }
