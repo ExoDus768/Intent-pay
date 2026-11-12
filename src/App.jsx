@@ -1474,39 +1474,6 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
             actionCreators.functionCall('ft_transfer', { receiver_id: depositAddress, amount: amountIn }, 50000000000000n, 1n)
           ]);
         }
-        // Wallet Selector adapters can return a FinalExecutionOutcome directly,
-        // an array of outcomes, or a wrapped result depending on wallet/provider version.
-        // Extract only a transaction hash; never treat an approval response as proof of broadcast.
-        const findNearTransactionHash = (value, depth = 0) => {
-          if (!value || depth > 5) return '';
-          if (typeof value === 'string') {
-            return /^[1-9A-HJ-NP-Za-km-z]{40,50}$/.test(value) ? value : '';
-          }
-          if (Array.isArray(value)) {
-            for (const item of value) {
-              const found = findNearTransactionHash(item, depth + 1);
-              if (found) return found;
-            }
-            return '';
-          }
-          if (typeof value !== 'object') return '';
-          const direct = [
-            value.transaction?.hash,
-            value.transaction_outcome?.id,
-            value.transactionHash,
-            value.transaction_hash,
-            value.hash
-          ];
-          for (const candidate of direct) {
-            const found = findNearTransactionHash(candidate, depth + 1);
-            if (found) return found;
-          }
-          for (const key of ['result', 'results', 'outcome', 'transaction', 'transaction_outcome']) {
-            const found = findNearTransactionHash(value[key], depth + 1);
-            if (found) return found;
-          }
-          return '';
-        };
         const hash = assertNearExecutionSucceeded(result, isNativeNear ? 'The wNEAR deposit transfer' : 'The NEAR token transfer');
         const transactionOutcome = result?.transaction_outcome?.outcome || result?.transactionOutcome?.outcome ||
           result?.transaction?.outcome || result?.outcome;
