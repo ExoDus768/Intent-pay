@@ -35,7 +35,10 @@ const tokenChain = t => normalizeBlockchain(t?.blockchain, t?.assetId);
 const isNearToken = t => tokenChain(t) === 'near';
 const isSolanaToken = t => tokenChain(t) === 'solana';
 const tokenId = t => t.assetId || '';
-const displayTokenSymbol = t => t?.symbol || 'TOKEN';
+const NATIVE_NEAR_ASSET_ID = 'native:near';
+const isNativeNearAsset = t => String(t?.assetId || '').toLowerCase() === NATIVE_NEAR_ASSET_ID;
+const isWrappedNearAsset = t => String(t?.assetId || '').toLowerCase() === 'nep141:wrap.near';
+const displayTokenSymbol = t => isNativeNearAsset(t) ? 'NEAR' : isWrappedNearAsset(t) ? 'WNEAR' : (t?.symbol || 'TOKEN');
 const tokenName = t => `${displayTokenSymbol(t)} · ${t.blockchain || 'Unknown chain'}`;
 const chainLabel = value => ({eth:'Ethereum',arb:'Arbitrum',op:'Optimism',avax:'Avalanche',bera:'Berachain',robinhood:'Robinhood Chain'}[value] || String(value || '').split(/[-_ ]+/).map(x => x.charAt(0).toUpperCase() + x.slice(1)).join(' '));
 const normalizeBlockchain = (value, assetId = '') => {
@@ -403,7 +406,9 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
     return () => { active = false; };
   }, []);
 
-  const origin = useMemo(() => tokens.find(t => tokenId(t) === originAsset), [tokens, originAsset]);
+  const origin = useMemo(() => originAsset === NATIVE_NEAR_ASSET_ID
+    ? { assetId: NATIVE_NEAR_ASSET_ID, intentsAssetId: 'nep141:wrap.near', blockchain: 'near', symbol: 'NEAR', name: 'Native NEAR', decimals: 24, price: tokens.find(t => isWrappedNearAsset(t))?.price }
+    : tokens.find(t => tokenId(t) === originAsset), [tokens, originAsset]);
   const sourceWallet = isNearToken(origin || {}) ? nearWallet : isSolanaToken(origin || {}) ? solWallet : wallet;
   const destination = useMemo(() => tokens.find(t => tokenId(t) === destinationAsset), [tokens, destinationAsset]);
   // History must be keyed to the wallet that actually funded the payment.
@@ -577,7 +582,16 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
   const usdEstimate = amount && Number.isFinite(Number(amount)) && Number(amount) > 0
     ? (fixedOutputCheckout ? Number(amount) : (Number.isFinite(Number(origin?.price)) && Number(origin.price) > 0 ? Number(amount) * Number(origin.price) : null))
     : null;
-  const origins = useMemo(() => tokens.filter(t => CHAIN_IDS[tokenChain(t)] || isNearToken(t) || isSolanaToken(t)), [tokens]);
+  const origins = useMemo(() => {
+    const listed = tokens.filter(t => CHAIN_IDS[tokenChain(t)] || isNearToken(t) || isSolanaToken(t));
+    // NEAR Intents lists wrapped NEAR, but native NEAR is held in the account
+    // balance. Add a separate UI asset and map its quote to the wrapped asset.
+    if (listed.some(isWrappedNearAsset) && !listed.some(isNativeNearAsset)) {
+      const wrapped = listed.find(isWrappedNearAsset);
+      listed.push({ assetId: NATIVE_NEAR_ASSET_ID, intentsAssetId: 'nep141:wrap.near', blockchain: 'near', symbol: 'NEAR', name: 'Native NEAR', decimals: 24, price: wrapped.price });
+    }
+    return listed;
+  }, [tokens]);
   const originChains = useMemo(() => [...new Set([...origins.map(tokenChain), 'near'])].sort((a, b) => chainLabel(a).localeCompare(chainLabel(b))), [origins]);
   const originTokens = useMemo(() => origins.filter(t => tokenChain(t) === originChain).sort((a, b) => tokenPriority(a) - tokenPriority(b) || String(a.symbol || '').localeCompare(String(b.symbol || ''))), [origins, originChain]);
   const filteredOriginTokens = useMemo(() => origins
@@ -633,7 +647,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
           const accountArgs = btoa(JSON.stringify({ account_id: account }));
           for (const token of originTokens) {
             if (cancelled) return;
-            const isNativeNear = String(token.symbol || '').trim().toUpperCase() === 'NEAR';
+            const isNativeNear = isNativeNearAsset(token);
             let raw;
             if (isNativeNear) {
               // Only the native NEAR asset uses the account balance. WNEAR is
@@ -721,7 +735,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
       try {
         let rawBalance;
         if (nearSource) {
-          const isNativeNear = String(origin.symbol || '').trim().toUpperCase() === 'NEAR';
+          const isNativeNear = isNativeNearAsset(origin);
           if (isNativeNear) {
             // Native NEAR uses the account balance; WNEAR uses ft_balance_of.
             const data = await nearRpc({ jsonrpc: '2.0', id: 'xoduspay-balance', method: 'query', params: { request_type: 'view_account', finality: 'final', account_id: account } });
@@ -1215,7 +1229,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           dry: true,
-          originAsset: origin.assetId,
+          originAsset: origin.intentsAssetId || origin.assetId,
           destinationAsset: destination.assetId,
           amount: atomicAmount,
           recipient: recipient.trim(),
@@ -1307,7 +1321,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
         const committed = await fetch('/api/quote', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            originAsset: origin.assetId,
+            originAsset: origin.intentsAssetId || origin.assetId,
             destinationAsset: destination.assetId,
             amount: fixedOutputCheckout ? usdToTokenAtomic(amount, destination) : parseUnits(amount, Number(origin.decimals)).toString(),
             recipient: recipient.trim(),
@@ -1410,10 +1424,10 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
         const walletClient = await getNearWalletClient();
         const depositAddress = activeQuote.quote.depositAddress;
         const amountIn = String(activeQuote.quote.amountIn);
-        const tokenContract = origin.contractAddress || (origin.assetId === 'nep141:wrap.near' ? 'wrap.near' : '');
+        const tokenContract = origin.contractAddress || (isNativeNearAsset(origin) || isWrappedNearAsset(origin) ? 'wrap.near' : '');
         if (!tokenContract) throw new Error('This NEAR token has no valid NEP-141 contract address in the live registry.');
         setNotice('Confirm the NEAR deposit in your wallet. Check the token, amount, and deposit address carefully.');
-        const isNativeNear = String(origin.symbol || '').trim().toUpperCase() === 'NEAR';
+        const isNativeNear = isNativeNearAsset(origin);
         const connectedAccounts = await walletClient.getAccounts();
         const activeAccount = connectedAccounts?.find(account => account.accountId === nearWallet);
         if (!activeAccount) {
@@ -1662,7 +1676,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
           <option value="">{!originChain ? 'Choose a network first' : walletTokenScan.loading ? 'Detecting wallet tokens…' : 'Choose a supported token'}</option>
           {walletDetectedOriginTokens.filter(t => !originSearch || (String(t.symbol || '') + ' ' + String(t.name || '')).toLowerCase().includes(originSearch.toLowerCase())).length > 0 && <optgroup label="Detected in your wallet">
             {walletDetectedOriginTokens.filter(t => tokenChain(t) === originChain && (!originSearch || (String(t.symbol || '') + ' ' + String(t.name || '')).toLowerCase().includes(originSearch.toLowerCase()))).map(t => (
-              <option key={t.assetId} value={t.assetId}>{t.symbol || 'TOKEN'}{String(t.symbol || '').trim().toUpperCase() === 'NEAR' ? ' (native NEAR)' : String(t.symbol || '').trim().toUpperCase() === 'WNEAR' ? ' (wrapped NEAR)' : ''} · {Number(walletTokenBalances[t.assetId]).toLocaleString(undefined, { maximumFractionDigits: 8 })} available</option>
+              <option key={t.assetId} value={t.assetId}>{displayTokenSymbol(t)}{isNativeNearAsset(t) ? ' (native NEAR)' : isWrappedNearAsset(t) ? ' (wrapped NEAR)' : ''} · {Number(walletTokenBalances[t.assetId]).toLocaleString(undefined, { maximumFractionDigits: 8 })} available</option>
             ))}
           </optgroup>}
           <optgroup label="Other supported tokens">
