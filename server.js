@@ -158,7 +158,7 @@ const EVM_BLOCKCHAINS = new Set([
   'eth', 'ethereum', 'base', 'arb', 'arbitrum', 'op', 'optimism',
   'polygon', 'bsc', 'bnb', 'avax', 'avalanche', 'gnosis', 'scroll',
   'aurora', 'bera', 'berachain', 'fantom', 'ftm', 'linea', 'zksync',
-  'mantle', 'mode', 'blast', 'celo', 'worldchain'
+  'mantle', 'mode', 'blast', 'celo', 'worldchain', 'hood', 'robinhood'
 ]);
 function isValidDestinationRecipient(recipient, blockchain) {
   const chain = String(blockchain || '').trim().toLowerCase();
