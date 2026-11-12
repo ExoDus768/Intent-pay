@@ -6,7 +6,7 @@ XoDuspay is a universal, cross-chain checkout built around **NEAR Intents 1Click
 
 The customer reviews a live quote and approves the payment in their own wallet. XoDuspay tracks the payment and records it as complete only when NEAR Intents 1Click reports `SUCCESS`.
 
-> **Status: mainnet hackathon prototype.** The team has tested the currently enabled payment routes, including Robinhood Chain (Hood). BNB Smart Chain has been tested and works, but is flagged as unstable in the application. Mainnet payments move real assets. The project has not undergone an independent security audit.
+> **Status: mainnet hackathon prototype.** We have tested the currently enabled payment routes, including Robinhood Chain (Hood). BNB Smart Chain has been tested and works, but is flagged as unstable in the application. Mainnet payments move real assets. The project has not undergone an independent security audit.
 
 ## Table of contents
 
@@ -93,7 +93,7 @@ The customer reviews a live quote and approves the payment in their own wallet. 
 
 XoDuspay uses the live 1Click token registry. An asset appearing in the registry does not guarantee that every source/destination pair or amount will receive a quote; availability depends on live liquidity, solver conditions and route minimums.
 
-The team has tested the currently enabled payment routes on mainnet, including the newly added Robinhood Chain (Hood) route. BNB Smart Chain is tested and working, but the application displays an **unstable** warning for it.
+We have tested the currently enabled payment routes on mainnet, including the newly added Robinhood Chain (Hood) route. BNB Smart Chain is tested and working, but the application displays an **unstable** warning for it.
 
 | Network | Project test status |
 |---|---|
