@@ -1413,32 +1413,67 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
         const tokenContract = origin.contractAddress || (origin.assetId === 'nep141:wrap.near' ? 'wrap.near' : '');
         if (!tokenContract) throw new Error('This NEAR token has no valid NEP-141 contract address in the live registry.');
         setNotice('Confirm the NEAR deposit in your wallet. Check the token, amount, and deposit address carefully.');
-        let transactions;
-        if (tokenContract === 'wrap.near' || origin.symbol === 'NEAR') {
-          transactions = [{ receiverId: 'wrap.near', actions: [
-            actionCreators.functionCall('near_deposit', {}, 30000000000000n, BigInt(amountIn)),
-            actionCreators.functionCall('ft_transfer', { receiver_id: depositAddress, amount: amountIn }, 50000000000000n, 1n)
-          ] }];
-        } else {
-          transactions = [{ receiverId: tokenContract, actions: [actionCreators.functionCall(
-            'ft_transfer', { receiver_id: depositAddress, amount: amountIn }, 50000000000000n, 1n
-          )] }];
-        }
-        // Use the single-transaction method for every Wallet Selector adapter.
-        // The multi-transaction API can invoke wallet-specific callback/redirect
-        // flows and return no immediate outcome, even though this checkout sends
-        // exactly one transaction. Single-send gives us one consistent broadcast
-        // result to validate before notifying 1Click.
+        const isNativeNear = tokenContract === 'wrap.near' || origin.symbol === 'NEAR';
         const connectedAccounts = await walletClient.getAccounts();
         const activeAccount = connectedAccounts?.find(account => account.accountId === nearWallet);
         if (!activeAccount) {
           throw new Error('The selected NEAR wallet is no longer connected to ' + nearWallet + '. Reconnect it and request a fresh quote.');
         }
-        const result = await walletClient.signAndSendTransaction({
+        // Native NEAR is wrapped and transferred in two separate wallet
+        // approvals. Some mobile wallets reject the combined two-action call.
+        // The second step is never attempted unless the wrap transaction succeeds.
+        const sendNearAction = async (receiverId, actions) => walletClient.signAndSendTransaction({
           signerId: activeAccount.accountId,
-          receiverId: transactions[0].receiverId,
-          actions: transactions[0].actions
+          receiverId,
+          actions
         });
+        const findNearTransactionHash = (value, depth = 0) => {
+          if (!value || depth > 5) return '';
+          if (typeof value === 'string') return /^[1-9A-HJ-NP-Za-km-z]{40,50}$/.test(value) ? value : '';
+          if (Array.isArray(value)) {
+            for (const item of value) {
+              const found = findNearTransactionHash(item, depth + 1);
+              if (found) return found;
+            }
+            return '';
+          }
+          if (typeof value !== 'object') return '';
+          for (const candidate of [value.transaction?.hash, value.transaction_outcome?.id, value.transactionHash, value.transaction_hash, value.hash]) {
+            const found = findNearTransactionHash(candidate, depth + 1);
+            if (found) return found;
+          }
+          for (const key of ['result', 'results', 'outcome', 'transaction', 'transaction_outcome']) {
+            const found = findNearTransactionHash(value[key], depth + 1);
+            if (found) return found;
+          }
+          return '';
+        };
+        const assertNearExecutionSucceeded = (result, stepName) => {
+          const outcome = result?.transaction_outcome?.outcome || result?.transactionOutcome?.outcome ||
+            result?.transaction?.outcome || result?.outcome;
+          const failed = outcome?.status?.Failure || outcome?.status?.failure ||
+            result?.status?.Failure || result?.status?.failure;
+          if (failed) throw new Error(stepName + ' was submitted but failed on-chain. Check NEAR wallet activity before retrying.');
+          const hash = findNearTransactionHash(result);
+          if (!hash) throw new Error(stepName + ' approval returned without a transaction hash. Check NEAR wallet activity before retrying; the next step was not started.');
+          return hash;
+        };
+        let result;
+        if (isNativeNear) {
+          setNotice('Step 1 of 2: approve wrapping native NEAR into wNEAR. No Intents deposit is sent yet.');
+          const wrapResult = await sendNearAction('wrap.near', [
+            actionCreators.functionCall('near_deposit', {}, 30000000000000n, BigInt(amountIn))
+          ]);
+          const wrapHash = assertNearExecutionSucceeded(wrapResult, 'The NEAR wrapping transaction');
+          setNotice('Native NEAR successfully wrapped (transaction ' + wrapHash.slice(0, 10) + '…). Step 2 of 2: approve sending wNEAR to the unique NEAR Intents deposit address.');
+          result = await sendNearAction('wrap.near', [
+            actionCreators.functionCall('ft_transfer', { receiver_id: depositAddress, amount: amountIn }, 50000000000000n, 1n)
+          ]);
+        } else {
+          result = await sendNearAction(tokenContract, [
+            actionCreators.functionCall('ft_transfer', { receiver_id: depositAddress, amount: amountIn }, 50000000000000n, 1n)
+          ]);
+        }
         // Wallet Selector adapters can return a FinalExecutionOutcome directly,
         // an array of outcomes, or a wrapped result depending on wallet/provider version.
         // Extract only a transaction hash; never treat an approval response as proof of broadcast.
@@ -1472,7 +1507,7 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
           }
           return '';
         };
-        const hash = findNearTransactionHash(result);
+        const hash = assertNearExecutionSucceeded(result, isNativeNear ? 'The wNEAR deposit transfer' : 'The NEAR token transfer');
         const transactionOutcome = result?.transaction_outcome?.outcome || result?.transactionOutcome?.outcome ||
           result?.transaction?.outcome || result?.outcome;
         const failedOutcome = transactionOutcome?.status?.Failure || transactionOutcome?.status?.failure ||
@@ -1485,10 +1520,6 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
         });
         if (failedOutcome) {
           throw new Error('The wallet broadcast the NEAR transaction, but execution failed on-chain. Check the wallet activity before retrying.');
-        }
-        if (!hash) {
-          setNotice('Wallet approval returned, but no transaction hash was received. XoDuspay has not marked this payment as sent. Check the wallet activity before retrying; do not approve a second payment if one is already listed.');
-          return;
         }
         setTxHash(hash);
         recordCurrentPayment('PROCESSING', hash, activeQuote);
