@@ -81,7 +81,7 @@ const normalizeTokenList = data => {
 };
 const short = (value = '') => value.length > 24 ? value.slice(0, 10) + '…' + value.slice(-8) : value;
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
-const NEAR_RPC_ENDPOINTS = ['https://free.rpc.fastnear.com', 'https://near.drpc.org'];
+const NEAR_RPC_ENDPOINTS = ['https://rpc.mainnet.near.org', 'https://free.rpc.fastnear.com'];
 async function nearRpc(payload) {
   let lastError;
   for (const endpoint of NEAR_RPC_ENDPOINTS) {
@@ -1510,8 +1510,8 @@ function MerchantApp({ merchantOnly = false, checkoutOnly = false }) {
         };
         const verifyNearTxStatus = async (hash, stepName) => {
           const response = await nearRpc({
-            jsonrpc: '2.0', id: 'xoduspay-tx-status', method: 'tx_status',
-            params: [hash, nearWallet, { wait_until: 'EXECUTED' }]
+            jsonrpc: '2.0', id: 'xoduspay-tx-status', method: 'tx',
+            params: [hash, nearWallet]
           });
           const status = response?.result?.status;
           if (status?.Failure || status?.failure) throw new Error(stepName + ' failed on-chain. Transaction: ' + hash);
